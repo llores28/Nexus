@@ -881,7 +881,9 @@ def run_health(
 ) -> None:
     """Route to the appropriate health subcommand."""
     fmt = OutputFormat(output_format)
-    proj_path = Path(project_dir).resolve()
+    # Auto-detect project root by walking up to find .windsurf/ or .git/
+    raw_path = Path(project_dir).resolve()
+    proj_path = find_project_root(raw_path)
 
     if subcommand == "check":
         data = run_health_check(proj_path)
