@@ -136,5 +136,16 @@ def local_env_cmd(ctx, subcommand, output_format, project_dir):
     run_local_env(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
 
 
+@cli.command("health")
+@click.argument("subcommand", type=click.Choice(["check", "components", "security", "usage", "report"]))
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory.")
+@click.pass_context
+def health_cmd(ctx, subcommand, output_format, project_dir):
+    """Nexus health check — validate components work cohesively."""
+    from bootstrap.cli.tools.health import run_health
+    run_health(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
+
+
 if __name__ == "__main__":
     cli()

@@ -1,11 +1,11 @@
-# Claude Code Instructions — ws-bootstrap-master
+# Claude Code Instructions — Nexus
 
 This file provides project-specific instructions to Claude Code and VS Code with Claude.
 For Windsurf, see `.windsurf/rules/` and `AGENTS.md`. For GitHub Copilot, see `.github/copilot-instructions.md`.
 
 ## Project
 
-Reusable bootstrap toolkit generating project-specific AI IDE operating systems (rules, agents, skills, workflows, docs).
+Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with automatic model selection and cross-IDE support.
 
 ## Stack
 - Python 3.10+, Click, Rich, httpx, beautifulsoup4
@@ -28,6 +28,7 @@ python bootstrap/cli/bs_cli.py smoketest --level quick  # Quick smoke test
 python bootstrap/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
 python bootstrap/cli/bs_cli.py research docs <q>  # Search docs
 python bootstrap/cli/bs_cli.py scaffold <name>    # Create new CLI tool
+python bootstrap/cli/bs_cli.py health check        # Nexus health check
 ```
 
 ## Key Directories

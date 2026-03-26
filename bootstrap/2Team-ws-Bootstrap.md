@@ -81,6 +81,7 @@ Create 6-10 high-signal workspace memories.
 
 ### 7) Token efficiency + cross-IDE support
 - `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation + model selection guide)
+- `bootstrap/model-selection-reference.md` (on-demand model cost database, excluded from indexing)
 - `.codeiumignore` (exclude large/generated files from indexing)
 - `.github/copilot-instructions.md` (VS Code Copilot cross-IDE support)
 - `CLAUDE.md` (Claude Code cross-IDE support)
