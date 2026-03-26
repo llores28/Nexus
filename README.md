@@ -26,6 +26,7 @@ Nexus transforms any repository into an intelligent development environment by:
 
 ### 🛠️ Complete Development Toolkit
 - **CLI tools** for environment setup, debugging, and validation
+- **Health monitoring** with 4-tier system validation (components, security, usage, recommendations)
 - **Container management** with Docker Desktop integration
 - **Automated smoke tests** for project health verification
 - **Documentation generation** (Developer Guide, Runbook, Handoff)
@@ -70,11 +71,22 @@ python bs_cli.py smoketest
 ### 3. Use Nexus Workflows
 ```bash
 # Common slash commands
+/nexus-health       # Full health check (100/100 score)
 /smoketest          # Verify project health
 /debug              # Investigate issues
 /research           # Research dependencies/docs
 /local-env up       # Start development containers
 /create-tool <name> # Scaffold new CLI tools
+```
+
+### 4. Monitor System Health
+```bash
+# Health monitoring commands
+python bootstrap/cli/bs_cli.py health check        # Full 4-tier health check
+python bootstrap/cli/bs_cli.py health components     # Component inventory
+python bootstrap/cli/bs_cli.py health security       # Security validation
+python bootstrap/cli/bs_cli.py health usage          # CLI usage analytics
+python bootstrap/cli/bs_cli.py health report         # Full report + recommendations
 ```
 
 ## Architecture
@@ -124,17 +136,20 @@ Nexus works seamlessly across multiple AI-powered IDEs:
 - ✅ **Input validation** - Paths and URLs validated before use
 - ✅ **Audit trail** - All CLI actions logged to `.cache/bs-cli/audit.jsonl`
 - ✅ **Secret scanning** - Automatic detection of leaked credentials
+- ✅ **Health validation** - System verifies security posture and configuration
 - ✅ **Safe defaults** - No destructive operations without explicit approval
 
 ## Token Efficiency
 
-Nexus optimizes AI token usage through:
+Nexus provides infrastructure for token optimization:
 
 - **Model decision triggers** - Rules load only when relevant
 - **Fast Context search** - Find information before reading files
 - **Batch tool calls** - Execute multiple operations in parallel
 - **Context caching** - Stick to one model per session
-- **On-demand references** - Large docs excluded from indexing
+- **On-demand references** - Large docs excluded from indexing via `.codeiumignore`
+
+*Note: Actual token usage and model selection happen in Windsurf internals and cannot be directly measured from the CLI.*
 
 ## Enterprise Features
 
