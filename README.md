@@ -1,115 +1,135 @@
-# Nexus - Intelligent Project Operating System
+# Nexus — Intelligent Project Operating System
 
-Nexus creates a complete, AI-powered project operating system that automatically optimizes development workflows, agent behaviors, and model selection based on task complexity.
+Nexus is a reusable bootstrap toolkit that generates project-specific AI-powered operating systems for any repository. It produces rules, agents, skills, workflows, and documentation that make AI assistants work smarter across Windsurf, VS Code Copilot, Claude Code, and Cursor.
 
-## What Nexus Does
+---
 
-Nexus transforms any repository into an intelligent development environment by:
+## What's In the Box
 
-### 🧠 Intelligent AI Agent Orchestration
-- **Context-aware rules** that activate based on what you're working on
-- **Reusable skills** for common development tasks (debug, research, testing)
-- **Automated workflows** triggered by slash commands
-- **Cross-IDE compatibility** (Windsurf, VS Code Copilot, Claude, Cursor)
+### Bootstrap Templates (3 tiers)
+Prompt templates that generate a complete Nexus operating system for your project:
 
-### ⚡ Automatic Model Selection
-- **Task complexity assessment** → optimal AI model recommendation
-- **Cost optimization** through intelligent escalation (free models first)
-- **Context caching** maximization by sticking to one model per session
-- **5-tier pricing strategy** from Free (SWE-1.5) to Ultra Premium (Claude Opus)
+| Template | File | Use Case |
+|---|---|---|
+| **Fast** | `bootstrap/1Fast-ws-Bootstrap.md` | Solo/daily development — speed over process |
+| **Team** | `bootstrap/2Team-ws-Bootstrap.md` | Team collaboration — balanced process |
+| **Enterprise** | `bootstrap/3Enterprise-ws-Bootstrap.md` | Compliance/governance — strict controls |
 
-### 🔒 Security-First Development
-- **Input validation** and path sanitization
-- **Secret detection** and audit trails
-- **No destructive operations** by default
-- **Evidence-based changes** with source citations
+Each template generates: rules, agents, skills, workflows, cross-IDE files, and documentation. A `/bootstrap-wizard` workflow guides template selection.
 
-### 🛠️ Complete Development Toolkit
-- **CLI tools** for environment setup, debugging, and validation
-- **Health monitoring** with 4-tier system validation (components, security, usage, recommendations)
-- **Container management** with Docker Desktop integration
-- **Automated smoke tests** for project health verification
-- **Documentation generation** (Developer Guide, Runbook, Handoff)
+Supporting files:
+- `bootstrap/Bootstrap-Project-Intake.md` — project intake questionnaire
+- `bootstrap/PRD-Template.md` — PRD generation template
+- `bootstrap/wizard-reference.md` — wizard logic reference
+- `bootstrap/model-selection-reference.md` — full model cost database (8.9KB, excluded from indexing)
 
-## Problems Nexus Solves
+### Rules System (`.windsurf/rules/`)
+Markdown files with YAML frontmatter that control AI behavior. Each rule has an activation trigger:
 
-| Problem | Nexus Solution |
+| Trigger | Behavior | Example |
+|---|---|---|
+| `always_on` | Loaded every conversation | `00-token-efficiency.md` — quota conservation |
+| `model_decision` | AI decides when relevant | Security rules, testing rules |
+| `glob` | Loaded when matching files are touched | Component-specific rules |
+
+**Current rules**: 1 (`00-token-efficiency.md` — always-on, provides model selection guidance and token-saving discipline)
+
+Bootstrapped projects generate 4–8 additional rules depending on template tier.
+
+### Skills System (`.windsurf/skills/`)
+Reusable skill definitions that Cascade invokes when tasks match. Each skill has a `SKILL.md` with YAML frontmatter (`name`, `description`) and step-by-step instructions.
+
+**8 skills installed:**
+
+| Skill | Purpose |
 |---|---|
-| **Inconsistent AI behavior** across different IDEs and projects | Unified agent instructions that work across Windsurf, VS Code, Claude, and Cursor |
-| **Wasting AI credits** on inappropriate models | Automatic model selection chooses the cheapest capable model for each task |
-| **Poor project context** leading to irrelevant AI suggestions | Project-specific rules and agents that understand your codebase |
-| **Manual environment setup** and configuration drift | Automated environment validation and container-based development |
-| **Security risks** from AI-generated code | Built-in security scanning and safe coding practices |
-| **Lost knowledge** when team members leave | Comprehensive documentation and handoff automation |
-| **Inconsistent development practices** | Standardized workflows and skills that enforce best practices |
+| `prereqs-check` | Check and guide setup for prerequisites (Docker, extensions, Python, Git, Node) |
+| `smoketest` | Run tiered smoke tests to verify project health |
+| `debug-investigate` | Systematic debugging using CLI tools |
+| `research-investigate` | Research dependencies, docs, and APIs |
+| `webscrape` | Fetch and extract content from external URLs |
+| `create-cli-tool` | Scaffold a new CLI tool from template |
+| `local-env` | Local container validation via Docker Desktop |
+| `nexus-health` | Validate all Nexus components work cohesively |
 
-## Quick Start
+### Workflows System (`.windsurf/workflows/`)
+Slash-command workflows that execute multi-step processes. Each workflow is a markdown file with a `description` in YAML frontmatter.
 
-### 1. Bootstrap Your Project
-```bash
-# In Windsurf, run the wizard
-/bootstrap-wizard
+**11 workflows installed:**
 
-# Or choose directly:
-/bootstrap-fast      # For daily/speed-focused development
-/bootstrap-team      # For balanced team collaboration
-/bootstrap-enterprise # For strict compliance and governance
-```
+| Slash Command | Workflow | Purpose |
+|---|---|---|
+| `/bootstrap-wizard` | `bootstrap-wizard.md` | Guided template selection |
+| `/bootstrap-prd` | `bootstrap-prd.md` | Generate project PRD |
+| `/nexus-health` | `nexus-health.md` | Run full health check |
+| `/smoketest` | `smoketest.md` | Project health verification |
+| `/debug-investigate` | `debug-investigate.md` | Guided debugging session |
+| `/research` | `research.md` | Structured research session |
+| `/scrape-docs` | `scrape-docs.md` | Fetch external documentation |
+| `/local-env` | `local-env.md` | Container validation |
+| `/create-tool` | `create-tool.md` | Scaffold new CLI tool |
+| `/prereqs-check` | `prereqs-check.md` | Check prerequisites |
+| `/migrate-toolkit` | `migrate-toolkit.md` | Migrate existing project to Nexus |
 
-### 2. Install CLI Toolkit
-```bash
-cd bootstrap/cli
-pip install -r requirements.txt
+### CLI Toolkit (`bootstrap/cli/`)
+Python command-line tools that provide automation for development tasks. All tools emit structured JSON by default, with `--format human` for terminal output and `--format yaml` for YAML.
 
-# Check prerequisites
-python bs_cli.py prereqs
+**Stack**: Python 3.10+, Click 8.1.7, Rich 13.9.4, PyYAML 6.0.2, httpx 0.27.2, beautifulsoup4 4.12.3
 
-# Run smoke tests
-python bs_cli.py smoketest
-```
+**Entry point**: `python bootstrap/cli/bs_cli.py <command>`
 
-### 3. Use Nexus Workflows
-```bash
-# Common slash commands
-/nexus-health       # Full health check (100/100 score)
-/smoketest          # Verify project health
-/debug              # Investigate issues
-/research           # Research dependencies/docs
-/local-env up       # Start development containers
-/create-tool <name> # Scaffold new CLI tools
-```
+Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl` via the security framework.
 
-### 4. Monitor System Health
-```bash
-# Health monitoring commands
-python bootstrap/cli/bs_cli.py health check        # Full 4-tier health check
-python bootstrap/cli/bs_cli.py health components     # Component inventory
-python bootstrap/cli/bs_cli.py health security       # Security validation
-python bootstrap/cli/bs_cli.py health usage          # CLI usage analytics
-python bootstrap/cli/bs_cli.py health report         # Full report + recommendations
-```
+#### Commands
 
-## Architecture
+| Command | Subcommands | What It Does |
+|---|---|---|
+| `prereqs` | — | Checks prerequisites (Python, Git, Docker, Node, extensions). `--guide` outputs setup instructions. |
+| `smoketest` | — | Auto-detects project type (Node/Python/Go), runs deps → lint → typecheck → test. `--level full` adds build + server health check. |
+| `debug` | `logs`, `trace`, `deps`, `env`, `ports`, `secrets-scan` | Log scanning, error tracing, dependency audit, env var validation, port checking, secret detection. |
+| `research` | `docs`, `deps`, `changelog`, `compare` | Search documentation, check dependency info, review changelogs, compare packages. |
+| `scrape` | `page`, `api`, `links`, `docs` | Web scraping for external docs, APIs, and link extraction. |
+| `scaffold` | — | Generates a new CLI tool from template with security framework integration. |
+| `local-env` | `init`, `build`, `up`, `down`, `logs`, `status`, `validate` | Docker container management and validation. |
+| `health` | `check`, `components`, `security`, `usage`, `report` | 4-tier Nexus health monitoring (see below). |
 
-```
-Nexus/
-├── bootstrap/           # Bootstrap templates and model selection
-│   ├── 1Fast-ws-Bootstrap.md
-│   ├── 2Team-ws-Bootstrap.md
-│   ├── 3Enterprise-ws-Bootstrap.md
-│   ├── model-selection-reference.md
-│   └── cli/             # Python CLI toolkit
-├── .windsurf/
-│   ├── rules/           # Project-specific AI rules
-│   ├── skills/          # Reusable AI skills
-│   └── workflows/       # Slash-command workflows
-├── AGENTS.md            # Cross-IDE AI instructions
-└── docs/                # Generated project documentation
-```
+### Health Monitoring System (`health` command)
+Validates that all Nexus components are properly configured and working together.
 
-## Model Selection Strategy
+**4-tier architecture:**
 
-Nexus automatically selects AI models based on task complexity:
+| Tier | What It Checks | Details |
+|---|---|---|
+| **Components** | Rules, skills, workflows, cross-IDE files, templates | File existence, valid frontmatter, size limits (<12KB), activation triggers |
+| **Security** | .gitignore, .codeiumignore, secrets, dependencies | Pattern coverage, secret detection, importability of CLI packages |
+| **Usage** | CLI audit trail | Tool usage counts, error rates, duration trends, last activity |
+| **Recommendations** | Actionable fixes | Sorted by severity (critical/high/medium/low) with specific commands |
+
+**Health score**: 0–100 weighted composite. Target: >80 = healthy configuration.
+
+### Cross-IDE Support
+Nexus generates configuration files for 4 AI-powered IDEs:
+
+| File | IDE | Contents |
+|---|---|---|
+| `AGENTS.md` | Windsurf + VS Code Copilot | Project overview, constraints, commands, model selection |
+| `.windsurf/rules/` | Windsurf | Activation-triggered behavioral rules |
+| `.github/copilot-instructions.md` | VS Code Copilot | Project context, coding standards, commands |
+| `CLAUDE.md` | Claude Code | Project constraints and commands |
+| `.cursorrules` | Cursor | Project context and development guidelines |
+
+### Security Framework (`bootstrap/cli/security.py`)
+Built into every CLI tool:
+
+- **Path sanitization** — `validate_path()` prevents directory traversal
+- **URL validation** — `validate_url()` with SSRF protection
+- **Package name validation** — `validate_package_name()` blocks injection
+- **Command safety** — `safe_command_args()` prevents shell injection
+- **Secret detection** — regex-based scanning for API keys, tokens, passwords
+- **Audit logging** — every CLI invocation logged to `.cache/bs-cli/audit.jsonl`
+
+### Model Selection Guidance
+The `00-token-efficiency.md` rule (always-on) provides a 5-tier model selection guide that recommends the cheapest capable model for each task:
 
 | Complexity | Examples | Recommended Model | Cost |
 |---|---|---|---|
@@ -119,61 +139,113 @@ Nexus automatically selects AI models based on task complexity:
 | **Expert** | Architecture, security audit | Claude Sonnet 4.6 / GPT-5 High | 2x |
 | **Frontier** | Threat modeling, novel design | Claude Opus 4.6 | 2-3x |
 
-**Escalation Pattern**: Always start with SWE-1.5 (free), escalate only if output quality is insufficient.
+**How it works**: The always-on rule instructs the AI to assess task complexity before starting, then recommend the optimal model. The full model database lives in `bootstrap/model-selection-reference.md` (excluded from indexing to save tokens, loaded on-demand).
 
-## Cross-IDE Support
+**What it doesn't do**: Actual model switching happens manually in Windsurf's UI. Nexus provides the recommendation; the user makes the selection.
 
-Nexus works seamlessly across multiple AI-powered IDEs:
+### Token Efficiency Infrastructure
+Multiple layers reduce unnecessary token consumption:
 
-- **Windsurf** (primary): Full feature support with rules, skills, and workflows
-- **VS Code Copilot**: Project context and coding standards
-- **Claude Code**: Project constraints and commands
-- **Cursor IDE**: Project context and development guidelines
+- **Rule activation triggers** — non-critical rules load only when relevant (`model_decision`, `glob`)
+- **`.codeiumignore`** — excludes large reference files from Windsurf indexing (wizard-reference.md, model-selection-reference.md)
+- **Always-on discipline** — the token-efficiency rule enforces concise responses, batch tool calls, and Fast Context search before file reads
+- **Structured CLI output** — JSON by default for machine consumption, minimizing verbose text
 
-## Security & Compliance
+**What's measurable**: The health tool validates that token-saving infrastructure exists and is configured correctly.
 
-- ✅ **No secrets in output** - All sensitive data is filtered
-- ✅ **Input validation** - Paths and URLs validated before use
-- ✅ **Audit trail** - All CLI actions logged to `.cache/bs-cli/audit.jsonl`
-- ✅ **Secret scanning** - Automatic detection of leaked credentials
-- ✅ **Health validation** - System verifies security posture and configuration
-- ✅ **Safe defaults** - No destructive operations without explicit approval
-
-## Token Efficiency
-
-Nexus provides infrastructure for token optimization:
-
-- **Model decision triggers** - Rules load only when relevant
-- **Fast Context search** - Find information before reading files
-- **Batch tool calls** - Execute multiple operations in parallel
-- **Context caching** - Stick to one model per session
-- **On-demand references** - Large docs excluded from indexing via `.codeiumignore`
-
-*Note: Actual token usage and model selection happen in Windsurf internals and cannot be directly measured from the CLI.*
-
-## Enterprise Features
-
-For teams requiring additional governance:
-
-- **Change management** and approval workflows
-- **Compliance traceability** matrices
-- **Security model** documentation
-- **Threat modeling** templates
-- **Handoff automation** for team transitions
-
-## Contributing
-
-Nexus is designed to be extensible:
-
-1. **Add skills** in `.windsurf/skills/` for new capabilities
-2. **Create workflows** in `.windsurf/workflows/` for new processes
-3. **Extend CLI tools** in `bootstrap/cli/tools/` for new utilities
-4. **Update model selection** in `bootstrap/model-selection-reference.md`
-
-## License
-
-MIT License - see LICENSE file for details.
+**What's not measurable**: Actual token counts and savings happen inside Windsurf internals with no API access.
 
 ---
 
-**Nexus**: Where intelligent development meets operational excellence.
+## Quick Start
+
+### 1. Install CLI Dependencies
+```bash
+pip install -r bootstrap/cli/requirements.txt
+```
+
+### 2. Check Prerequisites
+```bash
+python bootstrap/cli/bs_cli.py prereqs --format human
+```
+
+### 3. Bootstrap Your Project
+```bash
+# In Windsurf, run the wizard
+/bootstrap-wizard
+
+# Or choose a tier directly:
+# Fast (solo) | Team (balanced) | Enterprise (governance)
+```
+
+### 4. Verify Health
+```bash
+python bootstrap/cli/bs_cli.py health check --format human
+# Target: 100/100 score
+```
+
+### 5. Use Workflows
+```bash
+/nexus-health       # Validate system health
+/smoketest          # Verify project health
+/debug-investigate  # Investigate issues
+/research           # Research dependencies/docs
+/local-env          # Container management
+/create-tool        # Scaffold new CLI tools
+```
+
+---
+
+## Project Structure
+
+```
+Nexus/
+├── bootstrap/
+│   ├── 1Fast-ws-Bootstrap.md          # Fast bootstrap template
+│   ├── 2Team-ws-Bootstrap.md          # Team bootstrap template
+│   ├── 3Enterprise-ws-Bootstrap.md    # Enterprise bootstrap template
+│   ├── Bootstrap-Project-Intake.md    # Project intake questionnaire
+│   ├── PRD-Template.md                # PRD generation template
+│   ├── wizard-reference.md            # Wizard logic (excluded from indexing)
+│   ├── model-selection-reference.md   # Model cost database (excluded from indexing)
+│   └── cli/
+│       ├── bs_cli.py                  # CLI entry point (8 commands)
+│       ├── security.py                # Security framework
+│       ├── utils.py                   # Shared utilities
+│       ├── requirements.txt           # Python dependencies
+│       └── tools/
+│           ├── prereqs.py             # Prerequisite checks
+│           ├── smoketest.py           # Smoke test runner
+│           ├── debug.py               # Debug investigation
+│           ├── research.py            # Dependency research
+│           ├── scrape.py              # Web scraping
+│           ├── scaffold.py            # Tool scaffolding
+│           ├── local_env.py           # Container management
+│           └── health.py              # Health monitoring (4-tier)
+├── .windsurf/
+│   ├── rules/
+│   │   └── 00-token-efficiency.md     # Always-on: token saving + model selection
+│   ├── skills/                        # 8 skill definitions
+│   └── workflows/                     # 11 slash-command workflows
+├── AGENTS.md                          # Windsurf + Copilot agent instructions
+├── CLAUDE.md                          # Claude Code instructions
+├── .cursorrules                       # Cursor IDE instructions
+├── .github/copilot-instructions.md    # VS Code Copilot instructions
+├── .codeiumignore                     # Excludes large files from indexing
+└── .gitignore                         # Sensitive file exclusions
+```
+
+---
+
+## Extending Nexus
+
+- **Add a skill**: Create `.windsurf/skills/<name>/SKILL.md` with YAML frontmatter
+- **Add a workflow**: Create `.windsurf/workflows/<name>.md` with `description` in frontmatter
+- **Add a CLI tool**: Run `python bootstrap/cli/bs_cli.py scaffold <name>` — inherits security framework
+- **Add a rule**: Create `.windsurf/rules/<name>.md` with activation trigger in frontmatter
+
+---
+
+## License
+
+MIT License — see LICENSE file for details.
