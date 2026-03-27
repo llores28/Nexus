@@ -46,6 +46,14 @@ logs/
 tmp/
 temp/
 
+# Nexus - Exclude non-essential files
+COMMIT_SUMMARY.md
+NexusHealthMasterPlan.md
+Nexus Health Audit and Tracking Plan.md
+NexusUpgradePlan.md
+linkedin-post.md
+ws-bootstrap-master.code-workspace
+
 # Secrets and environment
 .env
 .env.local
