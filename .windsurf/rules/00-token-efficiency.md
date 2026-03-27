@@ -16,16 +16,39 @@ trigger: always_on
 - For simple edits, suggest the user use Ctrl+I (Command mode, no quota cost).
 - Prefer `model_decision` or `glob` trigger for non-critical rules over `always_on`.
 
-## Model Selection (Auto-Optimize)
-Before each task, assess complexity and recommend the optimal model to the user.
-Read `bootstrap/model-selection-reference.md` for the full model database and selection algorithm.
+## Model Selection — INTERACTIVE (Use ask_user_question)
 
-Quick decision guide (no need to read reference for these):
-- **Simple tasks** (edits, typos, explanations, boilerplate): Stay on **SWE-1.5** (free).
-- **Moderate tasks** (multi-file edits, unit tests, standard debug): Stay on **SWE-1.5**; suggest **GPT-5 Low** (0.5x) only if output quality is lacking.
-- **Complex tasks** (architecture, refactoring across modules, security): Suggest **GPT-5 Med** (1x) or **Gemini 3.1 Pro** (1x).
-- **Expert tasks** (architecture design, security audit, deep debug): Suggest **Claude Sonnet 4.6** (2x) or **GPT-5 High** (2x).
-- **Frontier tasks** (novel design, threat modeling): Suggest **Claude Opus 4.6** (2x) or **Opus Thinking** (3x).
+**IMPORTANT**: When you detect a task that would benefit from a more capable model, you MUST use the `ask_user_question` tool to present model options to the user. Do NOT just mention it in text — present an interactive choice.
 
-Always apply the **escalation pattern**: start free, escalate only if quality is insufficient.
+### When to Trigger Model Selection
+Assess the user's request. If it matches these patterns AND current model is SWE-1.5 or a free tier:
+
+| Task Type | Indicators | Recommended Model |
+|-----------|------------|-------------------|
+| **Complex** | Architecture, refactoring across modules, security hardening | GPT-5 Med (1x) or Gemini 3.1 Pro (1x) |
+| **Expert** | Security audit, deep debugging, system design | Claude Sonnet 4.6 (2x) or GPT-5 High (2x) |
+| **Frontier** | Novel architecture, threat modeling, research | Claude Opus 4.6 (2x) |
+
+### How to Present Options
+Use the `ask_user_question` tool with options like:
+
+```
+Question: "This looks like a [complex/expert/frontier] task. Would you like to switch models for better results?"
+
+Options:
+1. "[Recommended Model] (Xx cost) — Best for this task"
+2. "Stay on current model — May have lower quality"
+3. "Let me clarify the task first"
+```
+
+### When NOT to Trigger
+- Simple tasks (edits, typos, explanations) — stay on SWE-1.5
+- User explicitly said to use current model
+- Already on a capable model for the task type
+- Quick questions or clarifications
+
+### Escalation Pattern
+Start free (SWE-1.5), escalate only when task complexity warrants it.
 Stick to one model per session to leverage context caching.
+
+Reference: `nexus/model-selection-reference.md` for full model database.

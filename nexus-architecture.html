@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus + Cascade — Honest Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #e0e0e0;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 50px;
+            font-size: 1.1rem;
+        }
+        
+        /* Two Column Layout */
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 50px;
+        }
+        
+        @media (max-width: 900px) {
+            .two-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .column {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            padding: 30px;
+        }
+        
+        .column-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .column-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .column-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+        
+        .column-subtitle {
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        /* Works Column */
+        .works {
+            border: 2px solid rgba(34, 197, 94, 0.3);
+        }
+        .works .column-icon {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+        }
+        .works .column-title {
+            color: #4ade80;
+        }
+        
+        /* Guidance Column */
+        .guidance {
+            border: 2px solid rgba(251, 146, 60, 0.3);
+        }
+        .guidance .column-icon {
+            background: linear-gradient(135deg, #f97316, #ea580c);
+        }
+        .guidance .column-title {
+            color: #fb923c;
+        }
+        
+        /* Feature Cards */
+        .feature-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 18px;
+            transition: all 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateX(5px);
+        }
+        
+        .feature-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .feature-icon {
+            font-size: 20px;
+        }
+        
+        .feature-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        .feature-desc {
+            color: #999;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-left: 32px;
+        }
+        
+        .feature-example {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-top: 10px;
+            margin-left: 32px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            color: #a78bfa;
+        }
+        
+        /* Status Badges */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge-works {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+        
+        .badge-guidance {
+            background: rgba(251, 146, 60, 0.2);
+            color: #fb923c;
+        }
+        
+        .badge-missing {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        
+        /* Gap Section */
+        .gap-section {
+            background: rgba(239, 68, 68, 0.05);
+            border: 2px solid rgba(239, 68, 68, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 50px;
+        }
+        
+        .gap-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .gap-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .gap-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #f87171;
+        }
+        
+        .gap-subtitle {
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        /* Comparison Table */
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 700px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .comparison-box {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .comparison-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        
+        .expect-label {
+            color: #60a5fa;
+        }
+        
+        .reality-label {
+            color: #f87171;
+        }
+        
+        .comparison-content {
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        
+        .comparison-content code {
+            background: rgba(139, 92, 246, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            color: #c4b5fd;
+        }
+        
+        /* Flow Diagram */
+        .flow-section {
+            margin-bottom: 50px;
+        }
+        
+        .flow-title {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            color: #8b5cf6;
+        }
+        
+        .flow-diagram {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .flow-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            min-width: 140px;
+        }
+        
+        .flow-box-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .flow-box-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 5px;
+        }
+        
+        .flow-box-desc {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        
+        .flow-arrow {
+            font-size: 24px;
+            color: #666;
+        }
+        
+        .flow-box.developer {
+            border-color: #22c55e;
+        }
+        .flow-box.cascade {
+            border-color: #8b5cf6;
+        }
+        .flow-box.nexus {
+            border-color: #ec4899;
+        }
+        .flow-box.output {
+            border-color: #22c55e;
+        }
+        
+        /* Model Selection Deep Dive */
+        .model-section {
+            background: rgba(251, 146, 60, 0.05);
+            border: 2px dashed rgba(251, 146, 60, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 50px;
+        }
+        
+        .model-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .model-header h2 {
+            font-size: 1.4rem;
+            color: #fb923c;
+            margin-bottom: 8px;
+        }
+        
+        .model-header p {
+            color: #888;
+            font-size: 0.95rem;
+        }
+        
+        .model-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .model-step {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        
+        .step-number {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            background: rgba(251, 146, 60, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #fb923c;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .step-desc {
+            color: #999;
+            font-size: 0.9rem;
+        }
+        
+        .step-status {
+            margin-top: 8px;
+        }
+        
+        /* Ideal Flow */
+        .ideal-section {
+            background: rgba(34, 197, 94, 0.05);
+            border: 2px solid rgba(34, 197, 94, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 50px;
+        }
+        
+        .ideal-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .ideal-header h2 {
+            font-size: 1.4rem;
+            color: #4ade80;
+            margin-bottom: 8px;
+        }
+        
+        .ideal-header p {
+            color: #888;
+            font-size: 0.95rem;
+        }
+        
+        .ideal-mockup {
+            background: #1e1e2e;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .mockup-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+        
+        .mockup-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .mockup-dot.red { background: #ff5f56; }
+        .mockup-dot.yellow { background: #ffbd2e; }
+        .mockup-dot.green { background: #27ca40; }
+        
+        .mockup-title {
+            margin-left: 10px;
+            color: #888;
+            font-size: 0.85rem;
+        }
+        
+        .mockup-content {
+            font-family: 'Consolas', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .mockup-user {
+            color: #60a5fa;
+            margin-bottom: 15px;
+        }
+        
+        .mockup-cascade {
+            color: #a78bfa;
+            margin-bottom: 15px;
+        }
+        
+        .mockup-suggestion {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .suggestion-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            color: #4ade80;
+            font-weight: 600;
+        }
+        
+        .suggestion-options {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .suggestion-btn {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.5);
+            border-radius: 6px;
+            padding: 8px 16px;
+            color: #4ade80;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .suggestion-btn:hover {
+            background: rgba(34, 197, 94, 0.4);
+        }
+        
+        .suggestion-btn.primary {
+            background: #22c55e;
+            color: #000;
+            font-weight: 600;
+        }
+        
+        .suggestion-note {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.85rem;
+        }
+        
+        .footer a {
+            color: #8b5cf6;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Windsurf Note */
+        .windsurf-note {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .windsurf-note p {
+            color: #60a5fa;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nexus + Cascade Architecture</h1>
+        <p class="subtitle">An honest view of what works, what's guidance-only, and what's missing</p>
+        
+        <!-- Simple Flow -->
+        <div class="flow-section">
+            <h2 class="flow-title">How It Actually Works</h2>
+            <div class="flow-diagram">
+                <div class="flow-box developer">
+                    <div class="flow-box-icon">👨‍💻</div>
+                    <div class="flow-box-title">Developer</div>
+                    <div class="flow-box-desc">Types request</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-box cascade">
+                    <div class="flow-box-icon">🤖</div>
+                    <div class="flow-box-title">Cascade</div>
+                    <div class="flow-box-desc">Reads rules & context</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-box nexus">
+                    <div class="flow-box-icon">⚡</div>
+                    <div class="flow-box-title">Nexus</div>
+                    <div class="flow-box-desc">Config & CLI tools</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-box output">
+                    <div class="flow-box-icon">✅</div>
+                    <div class="flow-box-title">Output</div>
+                    <div class="flow-box-desc">Response</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Two Columns: Works vs Guidance -->
+        <div class="two-columns">
+            <!-- What Actually Works -->
+            <div class="column works">
+                <div class="column-header">
+                    <div class="column-icon">✅</div>
+                    <div>
+                        <div class="column-title">What Actually Works</div>
+                        <div class="column-subtitle">Visible, measurable features</div>
+                    </div>
+                </div>
+                
+                <div class="feature-list">
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">🔧</span>
+                            <span class="feature-title">CLI Toolkit</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">8 commands that run and produce visible output</div>
+                        <div class="feature-example">python nexus/cli/bs_cli.py health check</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">🔄</span>
+                            <span class="feature-title">Workflows</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">Invoke with /command, Cascade follows steps</div>
+                        <div class="feature-example">/smoketest → runs test sequence</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">📄</span>
+                            <span class="feature-title">AGENTS.md Context</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">Cascade reads project info, stack, constraints</div>
+                        <div class="feature-example">Cascade knows: Python 3.10+, Click, Rich</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">🛡️</span>
+                            <span class="feature-title">Security Framework</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">Path validation, secret scanning, audit logging</div>
+                        <div class="feature-example">bs_cli.py debug secrets-scan</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- What's Guidance Only -->
+            <div class="column guidance">
+                <div class="column-header">
+                    <div class="column-icon">📋</div>
+                    <div>
+                        <div class="column-title">What's Guidance Only</div>
+                        <div class="column-subtitle">Rules Cascade may or may not follow</div>
+                    </div>
+                </div>
+                
+                <div class="feature-list">
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">💰</span>
+                            <span class="feature-title">Model Selection</span>
+                            <span class="badge badge-works">Interactive</span>
+                        </div>
+                        <div class="feature-desc">Rule instructs Cascade to use <code>ask_user_question</code> tool — presents clickable options for model switching</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">📊</span>
+                            <span class="feature-title">Token Efficiency</span>
+                            <span class="badge badge-guidance">Guidance</span>
+                        </div>
+                        <div class="feature-desc">Rule tells Cascade "be concise" but no way to measure if it's working</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">📋</span>
+                            <span class="feature-title">Rules System</span>
+                            <span class="badge badge-guidance">Guidance</span>
+                        </div>
+                        <div class="feature-desc">Cascade reads rules but enforcement is not guaranteed</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">🎯</span>
+                            <span class="feature-title">Skills</span>
+                            <span class="badge badge-guidance">Guidance</span>
+                        </div>
+                        <div class="feature-desc">Available for Cascade to reference but invocation is invisible</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Model Selection Deep Dive -->
+        <div class="model-section" style="border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05);">
+            <div class="model-header">
+                <h2 style="color: #4ade80;">✅ Model Selection: Interactive Flow</h2>
+                <p>Using <code>ask_user_question</code> tool to present choices</p>
+            </div>
+            
+            <div class="model-flow">
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">1</div>
+                    <div class="step-content">
+                        <div class="step-title">You're on SWE-1.5 (free model)</div>
+                        <div class="step-desc">You ask: "Refactor this authentication system with security best practices"</div>
+                    </div>
+                </div>
+                
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">2</div>
+                    <div class="step-content">
+                        <div class="step-title">Cascade reads the rule</div>
+                        <div class="step-desc">Rule says: "Expert tasks (security) → Use <code>ask_user_question</code> to present model options"</div>
+                    </div>
+                </div>
+                
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">3</div>
+                    <div class="step-content">
+                        <div class="step-title">Cascade presents interactive choice</div>
+                        <div class="step-desc">Uses <code>ask_user_question</code> tool — same as Plan mode choices</div>
+                        <div class="step-status"><span class="badge badge-works">Interactive UI</span></div>
+                    </div>
+                </div>
+                
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">4</div>
+                    <div class="step-content">
+                        <div class="step-title">You click your choice</div>
+                        <div class="step-desc">Select recommended model, stay on current, or ask for clarification</div>
+                        <div class="step-status"><span class="badge badge-works">User control</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- The Solution -->
+        <div class="gap-section" style="border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05);">
+            <div class="gap-header">
+                <div class="gap-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">✅</div>
+                <div>
+                    <div class="gap-title" style="color: #4ade80;">The Solution: ask_user_question Tool</div>
+                    <div class="gap-subtitle">How we make model selection interactive</div>
+                </div>
+            </div>
+            
+            <div class="comparison">
+                <div class="comparison-box">
+                    <div class="comparison-label" style="color: #f87171;">❌ Old Approach (Passive)</div>
+                    <div class="comparison-content">
+                        <p>Rule just said "suggest Claude for expert tasks":</p>
+                        <ul style="margin: 10px 0 0 20px; color: #999;">
+                            <li>Cascade reads rule silently</li>
+                            <li>Maybe mentions it in text (easy to miss)</li>
+                            <li>No interactive choice</li>
+                            <li>User doesn't know to switch</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="comparison-box">
+                    <div class="comparison-label" style="color: #4ade80;">✅ New Approach (Interactive)</div>
+                    <div class="comparison-content">
+                        <p>Rule instructs Cascade to USE <code>ask_user_question</code>:</p>
+                        <ul style="margin: 10px 0 0 20px; color: #999;">
+                            <li>Cascade detects complex task</li>
+                            <li>Calls <code>ask_user_question</code> tool</li>
+                            <li><strong>Clickable buttons appear</strong></li>
+                            <li>User picks model with one click</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="windsurf-note" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3);">
+                <p style="color: #4ade80;"><strong>Key insight:</strong> Cascade has the <code>ask_user_question</code> tool (same as Plan mode choices). We just needed to instruct the rule to USE it!</p>
+            </div>
+        </div>
+        
+        <!-- Actual Flow -->
+        <div class="ideal-section">
+            <div class="ideal-header">
+                <h2>🎯 How It Works Now</h2>
+                <p>The actual interaction you'll see with the updated rule</p>
+            </div>
+            
+            <div class="ideal-mockup">
+                <div class="mockup-header">
+                    <div class="mockup-dot red"></div>
+                    <div class="mockup-dot yellow"></div>
+                    <div class="mockup-dot green"></div>
+                    <span class="mockup-title">Cascade Chat — Windsurf</span>
+                </div>
+                
+                <div class="mockup-content">
+                    <div class="mockup-user">
+                        <strong>You:</strong> Refactor the authentication module with OAuth2 and security hardening
+                    </div>
+                    
+                    <div class="mockup-suggestion">
+                        <div class="suggestion-header">
+                            <span>⚡</span>
+                            <span>Model Recommendation</span>
+                        </div>
+                        <p style="color: #ccc; font-size: 0.9rem; margin-bottom: 12px;">
+                            This looks like an <strong>expert security task</strong>. Would you like to switch models for better results?
+                        </p>
+                        <div class="suggestion-options">
+                            <button class="suggestion-btn primary">Claude Sonnet 4.6 (2x) — Best for security</button>
+                            <button class="suggestion-btn">Stay on current model</button>
+                            <button class="suggestion-btn">Let me clarify the task first</button>
+                        </div>
+                        <p class="suggestion-note">Triggered by: 00-token-efficiency.md → ask_user_question</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="windsurf-note" style="margin-top: 25px; background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3);">
+                <p style="color: #4ade80;"><strong>This is real!</strong> The rule now instructs Cascade to use the <code>ask_user_question</code> tool, which presents these clickable options in the chat.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Nexus — Honest documentation of capabilities</p>
+            <p><a href="https://github.com/llores28/Nexus">github.com/llores28/Nexus</a></p>
+        </div>
+    </div>
+</body>
+</html>
