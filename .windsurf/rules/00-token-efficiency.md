@@ -33,13 +33,17 @@ Assess the user's request. If it matches these patterns AND current model is SWE
 Use the `ask_user_question` tool with options like:
 
 ```
-Question: "This looks like a [complex/expert/frontier] task. Would you like to switch models for better results?"
+Question: "This looks like a [complex/expert/frontier] task. Which model would you prefer? (Note: You'll need to manually switch in the model menu)"
 
 Options:
 1. "[Recommended Model] (Xx cost) — Best for this task"
 2. "Stay on current model — May have lower quality"
 3. "Let me clarify the task first"
 ```
+
+After user selects, respond with:
+- If they chose a different model: "Great choice! Please switch to [Model] in the model menu for optimal results."
+- If they stayed: "Understood. I'll proceed with the current model."
 
 ### When NOT to Trigger
 - Simple tasks (edits, typos, explanations) — stay on SWE-1.5
