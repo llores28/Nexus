@@ -7,8 +7,8 @@ Nexus creates a complete, AI-powered project operating system that automatically
 This is `Nexus`, a reusable bootstrap toolkit that generates project-specific AI-powered operating systems including rules, agents, skills, workflows, and documentation.
 
 ### Key directories
-- `bootstrap/` — Bootstrap prompt templates (Fast/Team/Enterprise) and model selection reference
-- `bootstrap/cli/` — Python CLI tools (smoketest, debug, research, scrape, local-env, scaffold)
+- `nexus/` — Bootstrap prompt templates (Fast/Team/Enterprise) and model selection reference
+- `nexus/cli/` — Python CLI tools (smoketest, debug, research, scrape, local-env, scaffold)
 - `.windsurf/rules/` — Nexus rule files with activation triggers
 - `.windsurf/skills/` — Reusable skill definitions (SKILL.md + resources)
 - `.windsurf/workflows/` — Slash-command workflow definitions
@@ -36,26 +36,26 @@ This is `Nexus`, a reusable bootstrap toolkit that generates project-specific AI
 - Keep responses concise — no restating known context.
 - For simple edits, suggest Ctrl+I (Command mode, free, no quota cost).
 - For routine tasks, use SWE-1.5 (free model) or SWE-1.
-- **Auto model selection**: Nexus automatically selects the optimal model based on task complexity via `bootstrap/model-selection-reference.md`.
+- **Auto model selection**: Nexus automatically selects the optimal model based on task complexity via `nexus/model-selection-reference.md`.
 - Suggest user run tests manually rather than auto-executing.
 
 ## Testing
 
-- Run `python bootstrap/cli/bs_cli.py smoketest --level quick` for quick verification.
-- Run `python bootstrap/cli/bs_cli.py prereqs` to check prerequisites.
+- Run `python nexus/cli/bs_cli.py smoketest --level quick` for quick verification.
+- Run `python nexus/cli/bs_cli.py prereqs` to check prerequisites.
 - CLI tools emit structured JSON by default (`--format json`), human output via `--format human`.
 
 ## CLI Toolkit Commands
 
 ```
-python bootstrap/cli/bs_cli.py prereqs          # Check prerequisites
-python bootstrap/cli/bs_cli.py smoketest         # Run smoke tests
-python bootstrap/cli/bs_cli.py debug logs <path> # Inspect logs
-python bootstrap/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
-python bootstrap/cli/bs_cli.py research docs <q> # Search docs
-python bootstrap/cli/bs_cli.py scrape page <url> # Scrape a page
-python bootstrap/cli/bs_cli.py local-env up      # Start containers
-python bootstrap/cli/bs_cli.py scaffold <name>   # Create new CLI tool
+python nexus/cli/bs_cli.py prereqs          # Check prerequisites
+python nexus/cli/bs_cli.py smoketest         # Run smoke tests
+python nexus/cli/bs_cli.py debug logs <path> # Inspect logs
+python nexus/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
+python nexus/cli/bs_cli.py research docs <q> # Search docs
+python nexus/cli/bs_cli.py scrape page <url> # Scrape a page
+python nexus/cli/bs_cli.py local-env up      # Start containers
+python nexus/cli/bs_cli.py scaffold <name>   # Create new CLI tool
 ```
 
 ## Model Selection
@@ -68,4 +68,4 @@ Nexus includes intelligent model selection that automatically chooses the optima
 - **Expert tasks** (architecture): Claude Sonnet 4.6 / GPT-5 High (2x)
 - **Frontier tasks** (threat modeling): Claude Opus 4.6 (2-3x)
 
-See `bootstrap/model-selection-reference.md` for the complete model database and selection algorithm.
+See `nexus/model-selection-reference.md` for the complete model database and selection algorithm.

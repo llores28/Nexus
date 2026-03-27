@@ -21,10 +21,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from bootstrap.cli.utils import (
+from nexus.cli.utils import (
     OutputFormat, Status, Severity, emit, make_result, truncate_output,
 )
-from bootstrap.cli.security import validate_path, scan_text_for_secrets
+from nexus.cli.security import validate_path, scan_text_for_secrets
 
 
 # --- Project detection for Dockerfile generation ---

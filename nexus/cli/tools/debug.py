@@ -18,10 +18,10 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
-from bootstrap.cli.utils import (
+from nexus.cli.utils import (
     OutputFormat, Status, Severity, emit, make_result, truncate_output, find_project_root,
 )
-from bootstrap.cli.security import (
+from nexus.cli.security import (
     validate_path, scan_text_for_secrets, sanitize_output,
 )
 

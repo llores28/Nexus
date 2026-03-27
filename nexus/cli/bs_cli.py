@@ -1,7 +1,7 @@
 """
-Bootstrap CLI Toolkit — main entry point.
+Nexus CLI Toolkit — main entry point.
 
-Usage: python bootstrap/cli/bs_cli.py <subcommand> [options]
+Usage: python nexus/cli/bs_cli.py <subcommand> [options]
 
 All tools emit structured JSON by default (--format json).
 Use --format human for rich terminal output.
@@ -13,13 +13,13 @@ from pathlib import Path
 
 import click
 
-# Ensure the bootstrap package is importable
+# Ensure the nexus package is importable
 _CLI_DIR = Path(__file__).resolve().parent
-_BOOTSTRAP_DIR = _CLI_DIR.parent
-if str(_BOOTSTRAP_DIR.parent) not in sys.path:
-    sys.path.insert(0, str(_BOOTSTRAP_DIR.parent))
+_NEXUS_DIR = _CLI_DIR.parent
+if str(_NEXUS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_NEXUS_DIR.parent))
 
-from bootstrap.cli.security import audit_log
+from nexus.cli.security import audit_log
 
 
 class AuditGroup(click.Group):
@@ -51,7 +51,7 @@ class AuditGroup(click.Group):
 @click.group(cls=AuditGroup)
 @click.version_option(version="0.1.0", prog_name="bs-cli")
 def cli():
-    """Bootstrap CLI Toolkit — sniper-agent tools for Cascade."""
+    """Nexus CLI Toolkit — sniper-agent tools for Cascade."""
     pass
 
 
@@ -64,7 +64,7 @@ def cli():
 @click.pass_context
 def prereqs_cmd(ctx, output_format, component, guide):
     """Check prerequisites and guide setup for missing components."""
-    from bootstrap.cli.tools.prereqs import run_prereqs
+    from nexus.cli.tools.prereqs import run_prereqs
     run_prereqs(output_format=output_format, component=component, guide=guide)
 
 
@@ -75,7 +75,7 @@ def prereqs_cmd(ctx, output_format, component, guide):
 @click.pass_context
 def smoketest_cmd(ctx, output_format, level, project_dir):
     """Run tiered smoke tests on the project."""
-    from bootstrap.cli.tools.smoketest import run_smoketest
+    from nexus.cli.tools.smoketest import run_smoketest
     run_smoketest(output_format=output_format, level=level, project_dir=project_dir)
 
 
@@ -87,7 +87,7 @@ def smoketest_cmd(ctx, output_format, level, project_dir):
 @click.pass_context
 def debug_cmd(ctx, subcommand, args, output_format, project_dir):
     """Debug investigation tools."""
-    from bootstrap.cli.tools.debug import run_debug
+    from nexus.cli.tools.debug import run_debug
     run_debug(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
 
 
@@ -98,7 +98,7 @@ def debug_cmd(ctx, subcommand, args, output_format, project_dir):
 @click.pass_context
 def research_cmd(ctx, subcommand, args, output_format):
     """Research and investigate dependencies, docs, and APIs."""
-    from bootstrap.cli.tools.research import run_research
+    from nexus.cli.tools.research import run_research
     run_research(subcommand=subcommand, args=args, output_format=output_format)
 
 
@@ -110,7 +110,7 @@ def research_cmd(ctx, subcommand, args, output_format):
 @click.pass_context
 def scrape_cmd(ctx, subcommand, url, output_format, depth):
     """Webscraping tools for external docs and APIs."""
-    from bootstrap.cli.tools.scrape import run_scrape
+    from nexus.cli.tools.scrape import run_scrape
     run_scrape(subcommand=subcommand, url=url, output_format=output_format, depth=depth)
 
 
@@ -121,7 +121,7 @@ def scrape_cmd(ctx, subcommand, url, output_format, depth):
 @click.pass_context
 def scaffold_cmd(ctx, name, description, output_format):
     """Scaffold a new CLI tool from template."""
-    from bootstrap.cli.tools.scaffold import run_scaffold
+    from nexus.cli.tools.scaffold import run_scaffold
     run_scaffold(name=name, description=description, output_format=output_format)
 
 
@@ -132,7 +132,7 @@ def scaffold_cmd(ctx, name, description, output_format):
 @click.pass_context
 def local_env_cmd(ctx, subcommand, output_format, project_dir):
     """Local environment and container validation tools."""
-    from bootstrap.cli.tools.local_env import run_local_env
+    from nexus.cli.tools.local_env import run_local_env
     run_local_env(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
 
 
@@ -143,7 +143,7 @@ def local_env_cmd(ctx, subcommand, output_format, project_dir):
 @click.pass_context
 def health_cmd(ctx, subcommand, output_format, project_dir):
     """Nexus health check — validate components work cohesively."""
-    from bootstrap.cli.tools.health import run_health
+    from nexus.cli.tools.health import run_health
     run_health(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
 
 

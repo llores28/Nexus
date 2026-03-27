@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
-from bootstrap.cli.utils import OutputFormat, Status, Severity, emit, make_result
+from nexus.cli.utils import OutputFormat, Status, Severity, emit, make_result
 
 
 # --- Component detection functions ---

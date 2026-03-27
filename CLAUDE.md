@@ -9,30 +9,30 @@ Nexus — Intelligent Project Operating System. Generates project-specific AI-po
 
 ## Stack
 - Python 3.10+, Click, Rich, httpx, beautifulsoup4
-- Entry: `bootstrap/cli/bs_cli.py`
-- Templates: `bootstrap/{1Fast,2Team,3Enterprise}-ws-Bootstrap.md`
+- Entry: `nexus/cli/bs_cli.py`
+- Templates: `nexus/{1Fast,2Team,3Enterprise}-ws-Bootstrap.md`
 
 ## Constraints
 - No secrets in output/commits/logs
 - No invented commands — verify from repo files
 - No shell=True, eval(), exec()
-- Validate paths via `bootstrap/cli/security.py:validate_path()`
-- Validate URLs via `bootstrap/cli/security.py:validate_url()`
-- Structured output via `bootstrap/cli/utils.py:emit()`
+- Validate paths via `nexus/cli/security.py:validate_path()`
+- Validate URLs via `nexus/cli/security.py:validate_url()`
+- Structured output via `nexus/cli/utils.py:emit()`
 - Mark uncertainty as `TODO(verify)`
 
 ## Commands
 ```bash
-python bootstrap/cli/bs_cli.py prereqs           # Check prerequisites
-python bootstrap/cli/bs_cli.py smoketest --level quick  # Quick smoke test
-python bootstrap/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
-python bootstrap/cli/bs_cli.py research docs <q>  # Search docs
-python bootstrap/cli/bs_cli.py scaffold <name>    # Create new CLI tool
-python bootstrap/cli/bs_cli.py health check        # Nexus health check
+python nexus/cli/bs_cli.py prereqs           # Check prerequisites
+python nexus/cli/bs_cli.py smoketest --level quick  # Quick smoke test
+python nexus/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
+python nexus/cli/bs_cli.py research docs <q>  # Search docs
+python nexus/cli/bs_cli.py scaffold <name>    # Create new CLI tool
+python nexus/cli/bs_cli.py health check        # Nexus health check
 ```
 
 ## Key Directories
-- `bootstrap/` — Templates + CLI toolkit
-- `bootstrap/cli/tools/` — Individual CLI tool implementations
+- `nexus/` — Templates + CLI toolkit
+- `nexus/cli/tools/` — Individual CLI tool implementations
 - `.windsurf/` — Windsurf-specific rules, skills, workflows
 - `.github/` — GitHub Copilot instructions

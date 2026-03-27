@@ -16,10 +16,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from bootstrap.cli.utils import (
+from nexus.cli.utils import (
     OutputFormat, Status, emit, make_result, truncate_output, find_project_root,
 )
-from bootstrap.cli.security import validate_package_name, validate_url
+from nexus.cli.security import validate_package_name, validate_url
 
 
 # --- Cache ---

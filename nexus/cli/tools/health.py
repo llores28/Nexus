@@ -16,10 +16,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from bootstrap.cli.utils import (
-    OutputFormat, Status, Severity, emit, make_result, truncate_output, find_project_root,
+from nexus.cli.utils import (
+    OutputFormat,
+    Status,
+    Severity,
+    emit,
+    make_result,
+    truncate_output,
+    find_project_root,
 )
-from bootstrap.cli.security import scan_text_for_secrets, validate_path
+from nexus.cli.security import scan_text_for_secrets, validate_path
 
 
 # --- Expected Nexus Components ---
@@ -359,8 +365,8 @@ def _check_cross_ide(project_dir: Path) -> dict[str, Any]:
 
 
 def _check_bootstrap_templates(project_dir: Path) -> dict[str, Any]:
-    """Validate bootstrap templates reference required files."""
-    templates_dir = project_dir / "bootstrap"
+    """Validate nexus templates reference required files."""
+    templates_dir = project_dir / "nexus"
     issues: list[dict] = []
     checked = 0
 
@@ -747,7 +753,7 @@ def _generate_recommendations(
             "severity": "high",
             "category": "dependencies",
             "message": "Missing CLI toolkit dependencies",
-            "action": "Run: pip install -r bootstrap/cli/requirements.txt",
+            "action": "Run: pip install -r nexus/cli/requirements.txt",
         })
 
     # Usage recommendations

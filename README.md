@@ -11,17 +11,17 @@ Prompt templates that generate a complete Nexus operating system for your projec
 
 | Template | File | Use Case |
 |---|---|---|
-| **Fast** | `bootstrap/1Fast-ws-Bootstrap.md` | Solo/daily development — speed over process |
-| **Team** | `bootstrap/2Team-ws-Bootstrap.md` | Team collaboration — balanced process |
-| **Enterprise** | `bootstrap/3Enterprise-ws-Bootstrap.md` | Compliance/governance — strict controls |
+| **Fast** | `nexus/1Fast-ws-Bootstrap.md` | Solo/daily development — speed over process |
+| **Team** | `nexus/2Team-ws-Bootstrap.md` | Team collaboration — balanced process |
+| **Enterprise** | `nexus/3Enterprise-ws-Bootstrap.md` | Compliance/governance — strict controls |
 
 Each template generates: rules, agents, skills, workflows, cross-IDE files, and documentation. A `/bootstrap-wizard` workflow guides template selection.
 
 Supporting files:
-- `bootstrap/Bootstrap-Project-Intake.md` — project intake questionnaire
-- `bootstrap/PRD-Template.md` — PRD generation template
-- `bootstrap/wizard-reference.md` — wizard logic reference
-- `bootstrap/model-selection-reference.md` — full model cost database (8.9KB, excluded from indexing)
+- `nexus/Bootstrap-Project-Intake.md` — project intake questionnaire
+- `nexus/PRD-Template.md` — PRD generation template
+- `nexus/wizard-reference.md` — wizard logic reference
+- `nexus/model-selection-reference.md` — full model cost database (8.9KB, excluded from indexing)
 
 ### Rules System (`.windsurf/rules/`)
 Markdown files with YAML frontmatter that control AI behavior. Each rule has an activation trigger:
@@ -71,12 +71,12 @@ Slash-command workflows that execute multi-step processes. Each workflow is a ma
 | `/prereqs-check` | `prereqs-check.md` | Check prerequisites |
 | `/migrate-toolkit` | `migrate-toolkit.md` | Migrate existing project to Nexus |
 
-### CLI Toolkit (`bootstrap/cli/`)
+### CLI Toolkit (`nexus/cli/`)
 Python command-line tools that provide automation for development tasks. All tools emit structured JSON by default, with `--format human` for terminal output and `--format yaml` for YAML.
 
 **Stack**: Python 3.10+, Click 8.1.7, Rich 13.9.4, PyYAML 6.0.2, httpx 0.27.2, beautifulsoup4 4.12.3
 
-**Entry point**: `python bootstrap/cli/bs_cli.py <command>`
+**Entry point**: `python nexus/cli/bs_cli.py <command>`
 
 Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl` via the security framework.
 
@@ -161,12 +161,12 @@ Multiple layers reduce unnecessary token consumption:
 
 ### 1. Install CLI Dependencies
 ```bash
-pip install -r bootstrap/cli/requirements.txt
+pip install -r nexus/cli/requirements.txt
 ```
 
 ### 2. Check Prerequisites
 ```bash
-python bootstrap/cli/bs_cli.py prereqs --format human
+python nexus/cli/bs_cli.py prereqs --format human
 ```
 
 ### 3. Bootstrap Your Project
@@ -180,7 +180,7 @@ python bootstrap/cli/bs_cli.py prereqs --format human
 
 ### 4. Verify Health
 ```bash
-python bootstrap/cli/bs_cli.py health check --format human
+python nexus/cli/bs_cli.py health check --format human
 # Target: 100/100 score
 ```
 
@@ -200,7 +200,7 @@ python bootstrap/cli/bs_cli.py health check --format human
 
 ```
 Nexus/
-├── bootstrap/
+├── nexus/
 │   ├── 1Fast-ws-Bootstrap.md          # Fast bootstrap template
 │   ├── 2Team-ws-Bootstrap.md          # Team bootstrap template
 │   ├── 3Enterprise-ws-Bootstrap.md    # Enterprise bootstrap template
@@ -241,7 +241,7 @@ Nexus/
 
 - **Add a skill**: Create `.windsurf/skills/<name>/SKILL.md` with YAML frontmatter
 - **Add a workflow**: Create `.windsurf/workflows/<name>.md` with `description` in frontmatter
-- **Add a CLI tool**: Run `python bootstrap/cli/bs_cli.py scaffold <name>` — inherits security framework
+- **Add a CLI tool**: Run `python nexus/cli/bs_cli.py scaffold <name>` — inherits security framework
 - **Add a rule**: Create `.windsurf/rules/<name>.md` with activation trigger in frontmatter
 
 ---

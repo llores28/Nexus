@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
-from bootstrap.cli.utils import (
+from nexus.cli.utils import (
     OutputFormat, Status, emit, make_result, truncate_output,
 )
-from bootstrap.cli.security import validate_url
+from nexus.cli.security import validate_url
 
 
 # --- Cache ---

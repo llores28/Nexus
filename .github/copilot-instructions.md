@@ -7,37 +7,37 @@ For Windsurf (Cascade), see `.windsurf/rules/` and `AGENTS.md`.
 
 Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with automatic model selection and cross-IDE support.
 - **Stack**: Python 3.10+, Click, Rich, httpx, beautifulsoup4
-- **Entry point**: `bootstrap/cli/bs_cli.py`
-- **Templates**: `bootstrap/1Fast-ws-Bootstrap.md`, `2Team-ws-Bootstrap.md`, `3Enterprise-ws-Bootstrap.md`
+- **Entry point**: `nexus/cli/bs_cli.py`
+- **Templates**: `nexus/1Fast-ws-Bootstrap.md`, `2Team-ws-Bootstrap.md`, `3Enterprise-ws-Bootstrap.md`
 
 ## Coding Standards
 
 - Python: PEP 8, type hints, docstrings for public functions.
 - No `shell=True` in subprocess calls.
 - No `eval()` or `exec()`.
-- All file paths validated via `bootstrap/cli/security.py:validate_path()`.
-- All URLs validated via `bootstrap/cli/security.py:validate_url()`.
-- Structured output via `bootstrap/cli/utils.py:emit()`.
+- All file paths validated via `nexus/cli/security.py:validate_path()`.
+- All URLs validated via `nexus/cli/security.py:validate_url()`.
+- Structured output via `nexus/cli/utils.py:emit()`.
 
 ## Security
 
 - Never hardcode secrets or API keys.
 - Never log secret values.
 - Validate all user inputs (paths, URLs, package names).
-- Run `python bootstrap/cli/bs_cli.py debug secrets-scan` before commits.
+- Run `python nexus/cli/bs_cli.py debug secrets-scan` before commits.
 
 ## Testing
 
-- Run quick verification: `python bootstrap/cli/bs_cli.py smoketest --level quick`
-- Check prerequisites: `python bootstrap/cli/bs_cli.py prereqs`
+- Run quick verification: `python nexus/cli/bs_cli.py smoketest --level quick`
+- Check prerequisites: `python nexus/cli/bs_cli.py prereqs`
 - CLI emits JSON by default (`--format json`), human output via `--format human`.
-- Run health check: `python bootstrap/cli/bs_cli.py health check --format human`
+- Run health check: `python nexus/cli/bs_cli.py health check --format human`
 
 ## File Organization
 
 ```
-bootstrap/          — Templates and CLI toolkit
-bootstrap/cli/      — Python CLI tools
+nexus/          — Templates and CLI toolkit
+nexus/cli/      — Python CLI tools
 .windsurf/rules/    — Windsurf rule files
 .windsurf/skills/   — Skill definitions
 .windsurf/workflows/— Workflow definitions
