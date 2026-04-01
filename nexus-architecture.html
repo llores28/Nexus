@@ -530,6 +530,214 @@
             color: #888;
         }
         
+        /* Complexity Ladder Styles */
+        .complexity-ladder {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .ladder-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .ladder-row:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateX(5px);
+        }
+        
+        .complexity-badge {
+            min-width: 80px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+        
+        .complexity-badge.low {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+        
+        .complexity-badge.moderate {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        
+        .complexity-badge.complex {
+            background: rgba(251, 146, 60, 0.2);
+            color: #fb923c;
+        }
+        
+        .complexity-badge.expert {
+            background: rgba(139, 92, 246, 0.2);
+            color: #a78bfa;
+        }
+        
+        .complexity-badge.frontier {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        
+        .ladder-content {
+            flex: 1;
+        }
+        
+        .ladder-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .ladder-model {
+            color: #60a5fa;
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+        }
+        
+        .ladder-desc {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        
+        /* Logic Flow Styles */
+        .logic-flow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .flow-node {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px 25px;
+            text-align: center;
+            min-width: 200px;
+        }
+        
+        .flow-node.start {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+        
+        .flow-node.decision {
+            background: rgba(251, 146, 60, 0.1);
+            border-color: rgba(251, 146, 60, 0.3);
+        }
+        
+        .flow-node.action {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+        
+        .flow-node.end {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+        
+        .flow-arrow {
+            font-size: 24px;
+            color: #666;
+        }
+        
+        .flow-branches {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+        }
+        
+        .flow-branch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Authority Model Styles */
+        .authority-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .authority-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .authority-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+        }
+        
+        .authority-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .authority-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .authority-role {
+            color: #fb923c;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+        
+        .authority-desc ul {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+        }
+        
+        .authority-desc li {
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 0.9rem;
+        }
+        
+        .authority-merge {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1));
+            border: 2px solid rgba(34, 197, 94, 0.3);
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+        }
+        
+        .merge-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .merge-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #4ade80;
+        }
+        
+        .merge-desc {
+            color: #ccc;
+            font-size: 0.95rem;
+        }
+        
         /* Footer */
         .footer {
             text-align: center;
@@ -707,7 +915,7 @@
         <div class="model-section" style="border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05);">
             <div class="model-header">
                 <h2 style="color: #4ade80;">✅ Model Selection: Interactive Flow</h2>
-                <p>Using <code>ask_user_question</code> tool to present choices</p>
+                <p>Using <code>ask_user_question</code> tool with hybrid authority model</p>
             </div>
             
             <div class="model-flow">
@@ -722,8 +930,8 @@
                 <div class="model-step">
                     <div class="step-number" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">2</div>
                     <div class="step-content">
-                        <div class="step-title">Cascade reads the rule</div>
-                        <div class="step-desc">Rule says: "Expert tasks (security) → Use <code>ask_user_question</code> to present model options"</div>
+                        <div class="step-title">Cascade reads hybrid sources</div>
+                        <div class="step-desc">Strategy from <code>nexus/model-selection-reference.md</code> + current names from Windsurf model menu</div>
                     </div>
                 </div>
                 
@@ -743,6 +951,173 @@
                         <div class="step-desc">Select recommended model, stay on current, or ask for clarification</div>
                         <div class="step-status"><span class="badge badge-works">User control</span></div>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Complexity Ladder Chart -->
+        <div class="model-section" style="border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.05);">
+            <div class="model-header">
+                <h2 style="color: #60a5fa;">📊 Complexity Ladder</h2>
+                <p>Model recommendations scale with task difficulty and cost</p>
+            </div>
+            
+            <div class="complexity-ladder">
+                <div class="ladder-row">
+                    <div class="complexity-badge low">Low</div>
+                    <div class="ladder-content">
+                        <div class="ladder-title">Typos, small edits, explanations</div>
+                        <div class="ladder-model">SWE-1.5 or low-cost/latest model</div>
+                        <div class="ladder-desc">Stay on current model — no prompt needed</div>
+                    </div>
+                </div>
+                
+                <div class="ladder-row">
+                    <div class="complexity-badge moderate">Moderate</div>
+                    <div class="ladder-content">
+                        <div class="ladder-title">Multi-file edits, routine refactors</div>
+                        <div class="ladder-model">Prefer SWE-1.5 first</div>
+                        <div class="ladder-desc">Only prompt if task exceeds comfort level</div>
+                    </div>
+                </div>
+                
+                <div class="ladder-row">
+                    <div class="complexity-badge complex">Complex</div>
+                    <div class="ladder-content">
+                        <div class="ladder-title">Architecture changes, security hardening</div>
+                        <div class="ladder-model">GPT-5 Medium Thinking or comparable</div>
+                        <div class="ladder-desc">Present model options with cost info</div>
+                    </div>
+                </div>
+                
+                <div class="ladder-row">
+                    <div class="complexity-badge expert">Expert</div>
+                    <div class="ladder-content">
+                        <div class="ladder-title">Security audits, deep debugging</div>
+                        <div class="ladder-model">Claude Sonnet 4.6 Thinking or GPT-5 High</div>
+                        <div class="ladder-desc">Strongly recommend upgrade for quality</div>
+                    </div>
+                </div>
+                
+                <div class="ladder-row">
+                    <div class="complexity-badge frontier">Frontier</div>
+                    <div class="ladder-content">
+                        <div class="ladder-title">Novel architecture, threat modeling</div>
+                        <div class="ladder-model">Claude Opus 4.6 Thinking</div>
+                        <div class="ladder-desc">Strongest available model recommended</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Logic Flow -->
+        <div class="model-section" style="border-color: rgba(139, 92, 246, 0.3); background: rgba(139, 92, 246, 0.05);">
+            <div class="model-header">
+                <h2 style="color: #a78bfa;">🔄 Decision Logic Flow</h2>
+                <p>How Cascade determines when to prompt for model selection</p>
+            </div>
+            
+            <div class="logic-flow">
+                <div class="flow-node start">
+                    <div class="node-content">User makes request</div>
+                </div>
+                
+                <div class="flow-arrow">↓</div>
+                
+                <div class="flow-node decision">
+                    <div class="node-content">Assess task complexity</div>
+                </div>
+                
+                <div class="flow-arrow">↓</div>
+                
+                <div class="flow-node decision">
+                    <div class="node-content">Current model adequate?</div>
+                </div>
+                
+                <div class="flow-branches">
+                    <div class="flow-branch">
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-node end">
+                            <div class="node-content">Proceed with current model</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-branch">
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-node action">
+                            <div class="node-content">Use ask_user_question</div>
+                        </div>
+                        <div class="flow-arrow">↓</div>
+                        <div class="flow-node action">
+                            <div class="node-content">Present model options</div>
+                        </div>
+                        <div class="flow-arrow">↓</div>
+                        <div class="flow-node decision">
+                            <div class="node-content">User selects model?</div>
+                        </div>
+                        <div class="flow-branches">
+                            <div class="flow-branch">
+                                <div class="flow-arrow">→</div>
+                                <div class="flow-node action">
+                                    <div class="node-content">Remind to switch manually</div>
+                                </div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-node end">
+                                    <div class="node-content">Continue with chosen model</div>
+                                </div>
+                            </div>
+                            <div class="flow-branch">
+                                <div class="flow-arrow">→</div>
+                                <div class="flow-node end">
+                                    <div class="node-content">Stay on current model</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Authority Model -->
+        <div class="model-section" style="border-color: rgba(251, 146, 60, 0.3); background: rgba(251, 146, 60, 0.05);">
+            <div class="model-header">
+                <h2 style="color: #fb923c;">📚 Hybrid Authority Model</h2>
+                <p>Two sources work together for optimal recommendations</p>
+            </div>
+            
+            <div class="authority-grid">
+                <div class="authority-card">
+                    <div class="authority-icon">📖</div>
+                    <div class="authority-title">nexus/model-selection-reference.md</div>
+                    <div class="authority-role">Strategy & Policy</div>
+                    <div class="authority-desc">
+                        <ul>
+                            <li>Complexity mapping</li>
+                            <li>Cost/quality heuristics</li>
+                            <li>Task-to-model strategy</li>
+                            <li>Project-specific guidance</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="authority-card">
+                    <div class="authority-icon">🌊</div>
+                    <div class="authority-title">Windsurf Model Selector</div>
+                    <div class="authority-role">Live Catalog</div>
+                    <div class="authority-desc">
+                        <ul>
+                            <li>Current model names</li>
+                            <li>Live pricing</li>
+                            <li>Availability status</li>
+                            <li>Exact UI labels</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="authority-merge">
+                    <div class="merge-icon">⚡</div>
+                    <div class="merge-title">Hybrid Result</div>
+                    <div class="merge-desc">Strategy from Nexus + current names from Windsurf = optimal user choice</div>
                 </div>
             </div>
         </div>

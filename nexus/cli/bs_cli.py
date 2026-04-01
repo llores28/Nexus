@@ -147,5 +147,17 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
     run_health(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
 
 
+@cli.command("supply-chain")
+@click.argument("subcommand", type=click.Choice(["scan", "ioc", "audit", "advisories"]))
+@click.argument("args", nargs=-1)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory to scan.")
+@click.pass_context
+def supply_chain_cmd(ctx, subcommand, args, output_format, project_dir):
+    """Supply chain security scanner — detect compromised packages and IOCs."""
+    from nexus.cli.tools.supply_chain import run_supply_chain
+    run_supply_chain(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
+
+
 if __name__ == "__main__":
     cli()
