@@ -125,7 +125,6 @@ Also create cross-IDE instruction files:
 - `CLAUDE.md`: project context, constraints, commands (for Claude Code / VS Code with Claude).
 - `.cursorrules`: project context, constraints, commands (for Cursor IDE).
 - `.codeiumignore`: exclude large/generated files from Windsurf indexing.
-- `bootstrap/model-selection-reference.md`: model cost database + selection algorithm (read on-demand, not indexed).
 
 ---
 

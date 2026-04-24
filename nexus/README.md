@@ -10,12 +10,11 @@ This folder contains the 3-tier bootstrap prompts and intake template for Nexus 
 - `Uni-WindsurfBootstrap.md` -> Universal fallback bootstrap
 - `Bootstrap-Project-Intake.md` -> Intake template used by the wizard
 - `PRD-Template.md` -> Template used by `/bootstrap-prd` to generate `docs/PRD.md`
-- `model-selection-reference.md` -> AI model cost database and selection algorithm
 
 ## Wizard usage in Cascade
 
 1. Run `/bootstrap-wizard`.
-2. Fill in `bootstrap/Bootstrap-Project-Intake.md` (or answer prompts in chat).
+2. Fill in `nexus/Bootstrap-Project-Intake.md` (or answer prompts in chat).
 3. The wizard recommends Fast, Team, or Enterprise and maps to the matching file.
 4. Confirm selection.
 5. Run `/bootstrap-prd` to create/update `docs/PRD.md` with cohesion + conflict checks.
@@ -44,21 +43,6 @@ Windsurf's quota-based system charges per-token. The bootstrap now includes seve
 | `00-token-efficiency.md` rule | Behavioral savings | Instructs Cascade to batch reads, use Fast Context first, suggest Ctrl+I |
 | `.codeiumignore` | Reduces indexing overhead | Excludes large reference docs and cache from ambient context |
 | SWE-1/SWE-1.5 for routine tasks | Free (0 credits) | Windsurf proprietary models consume no quota |
-| Auto model selection | Optimal cost per task | `model-selection-reference.md` maps task complexity → cheapest capable model |
-
-### Auto Model Selection
-
-The `00-token-efficiency.md` rule includes a quick decision guide that recommends the optimal model based on task complexity. For the full model database (all tiers, costs, capabilities, selection algorithm), see `bootstrap/model-selection-reference.md`.
-
-| Task Complexity | Recommended Model | Cost |
-|---|---|---|
-| Simple (typos, formatting, boilerplate) | SWE-1.5 | Free |
-| Moderate (multi-file edits, unit tests) | SWE-1.5 → GPT-5 Low | Free → 0.5x |
-| Complex (refactoring, API integration) | GPT-5 Med / Gemini 3.1 Pro | 1x |
-| Expert (architecture, security audit) | Claude Sonnet 4.6 / GPT-5 High | 2x |
-| Frontier (novel design, threat modeling) | Claude Opus 4.6 (Thinking) | 2x–3x |
-
-**Escalation pattern**: Always start with the cheapest model (SWE-1.5), escalate only if output quality is insufficient. Stick to one model per session to leverage context caching.
 
 ### Tips for users
 - Use **Ctrl+I** (Command mode) for simple edits — it's free, no quota cost.
@@ -86,7 +70,7 @@ The bootstrap generates instruction files for multiple IDEs:
 1. Open the project in VS Code.
 2. Install GitHub Copilot extension (or Continue/Cline).
 3. `AGENTS.md` and `.github/copilot-instructions.md` are auto-detected.
-4. CLI tools work identically: `python bootstrap/cli/bs_cli.py --help`.
+4. CLI tools work identically: `python nexus/cli/bs_cli.py --help`.
 5. Windsurf-specific features (rules, skills, workflows) won't activate but core project context is preserved.
 
 ## CLI Toolkit
@@ -97,8 +81,8 @@ See `cli/README.md` for full documentation.
 
 ### Quick start
 ```bash
-pip install -r bootstrap/cli/requirements.txt
-python bootstrap/cli/bs_cli.py --help
+pip install -r nexus/cli/requirements.txt
+python nexus/cli/bs_cli.py --help
 ```
 
 ### Available slash commands
@@ -131,10 +115,9 @@ Run `/migrate-toolkit` to add the toolkit without touching any existing bootstra
 
 | File | Purpose |
 |---|---|
-| `bootstrap/wizard-reference.md` | Full decision logic for `/bootstrap-wizard` (read on-demand, not indexed) |
-| `bootstrap/model-selection-reference.md` | Model cost database + selection algorithm (read on-demand, not indexed) |
+| `nexus/wizard-reference.md` | Full decision logic for `/bootstrap-wizard` (read on-demand, not indexed) |
 | `.codeiumignore` | Excludes large reference docs and cache from Windsurf indexing |
-| `.windsurf/rules/00-token-efficiency.md` | Always-on rule for quota conservation + model selection guide |
+| `.windsurf/rules/00-token-efficiency.md` | Always-on rule for quota conservation |
 | `AGENTS.md` | Cross-IDE project instructions (Windsurf + VS Code Copilot) |
 | `.github/copilot-instructions.md` | VS Code Copilot instructions |
 | `CLAUDE.md` | Claude Code instructions |

@@ -88,7 +88,6 @@ GITIGNORE_REQUIRED_PATTERNS = [
 
 CODEIUMIGNORE_EXPECTED = [
     "wizard-reference.md",
-    "model-selection-reference.md",
 ]
 
 
@@ -383,11 +382,6 @@ def _check_bootstrap_templates(project_dir: Path) -> dict[str, Any]:
         checked += 1
         try:
             content = tmpl.read_text(encoding="utf-8", errors="replace")
-            if "model-selection-reference" not in content:
-                issues.append({
-                    "severity": "medium",
-                    "message": f"Template {tmpl.name} missing reference to model-selection-reference.md",
-                })
             if "token-efficiency" not in content.lower() and "00-token-efficiency" not in content:
                 issues.append({
                     "severity": "low",

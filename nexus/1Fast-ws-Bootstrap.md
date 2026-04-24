@@ -11,7 +11,7 @@ Create:
 ### 1) Rules
 - `.windsurf/rules/00-project-overview.md`
 - `.windsurf/rules/01-security-and-secrets.md`
-- `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation + model selection guide)
+- `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation)
 - Optional component rules if relevant:
   - `.windsurf/rules/10-backend.md`
   - `.windsurf/rules/11-frontend-or-admin.md`
@@ -26,7 +26,7 @@ Create:
 - `.windsurf/workflows/run-quality.md`
 - `.windsurf/workflows/smoketest.md`
 - `.windsurf/workflows/debug-investigate.md`
-- `bootstrap/cli/` (CLI toolkit — smoketest + debug tools)
+- `nexus/cli/` (CLI toolkit — smoketest + debug tools)
 - `docs/DEVELOPER_GUIDE.md` (full)
 - `docs/TEST_ENVIRONMENT.md` (full)
 - `docs/RUNBOOK.md` (practical minimal)
@@ -34,8 +34,6 @@ Create:
 - `docs/USER_GUIDE.md` (skeleton + TODOs if product UX unclear)
 - `docs/WHITEPAPER.md` (skeleton + TODOs if architecture unclear)
 - 5-8 high-signal Windsurf memories
-- `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation + model selection guide)
-- `bootstrap/model-selection-reference.md` (on-demand model cost database, excluded from indexing)
 - `.codeiumignore` (exclude large/generated files from indexing)
 - `.github/copilot-instructions.md` (VS Code Copilot cross-IDE support)
 - `CLAUDE.md` (Claude Code cross-IDE support)

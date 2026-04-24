@@ -136,7 +136,7 @@ def {fn_name}_cmd(ctx, output_format, project_dir):
     result["next_steps"] = [
         f"1. Edit {tool_path.name} to implement your tool logic",
         "2. Add the registration snippet to bs_cli.py",
-        f"3. Test: python bootstrap/cli/bs_cli.py {clean_name} --format human",
+        f"3. Test: python nexus/cli/bs_cli.py {clean_name} --format human",
     ]
 
     emit(result, fmt)

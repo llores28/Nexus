@@ -1,12 +1,12 @@
-# Bootstrap CLI Toolkit
+# Nexus CLI Toolkit
 
 Focused "sniper agent" CLI tools for Cascade — smoketesting, debugging, research, webscraping, container validation, and tool scaffolding.
 
 ## Quick Start
 
 ```bash
-pip install -r bootstrap/cli/requirements.txt
-python bootstrap/cli/bs_cli.py --help
+pip install -r nexus/cli/requirements.txt
+python nexus/cli/bs_cli.py --help
 ```
 
 ## Design Principles

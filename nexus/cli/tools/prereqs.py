@@ -323,7 +323,7 @@ def run_prereqs(
                 result["next_steps"].append({
                     "component": m,
                     "auto_install": g.get("auto_install", False),
-                    "guide_cmd": f"python bootstrap/cli/bs_cli.py prereqs --guide --component {m}",
+                    "guide_cmd": f"python nexus/cli/bs_cli.py prereqs --guide --component {m}",
                 })
 
     emit(result, fmt)

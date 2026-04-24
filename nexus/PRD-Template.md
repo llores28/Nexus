@@ -9,7 +9,7 @@
 - Wizard confidence: High | Medium | Low
 - Source artifacts:
   - `/bootstrap-wizard` output:
-  - `bootstrap/Bootstrap-Project-Intake.md`:
+  - `nexus/Bootstrap-Project-Intake.md`:
   - Selected bootstrap file:
 
 ## 1) Problem Statement

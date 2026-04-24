@@ -39,7 +39,7 @@ Create 5-8 skills under `.windsurf/skills/`, including:
 - `debug-incident` (if services/ops exist)
 - `docs-refresh` (optional but recommended)
 
-Additionally, install CLI toolkit skills from `bootstrap/`:
+Additionally, install CLI toolkit skills from `nexus/`:
 - `prereqs-check` — check prerequisites (Docker, MCP, extensions)
 - `smoketest` — tiered smoke tests
 - `debug-investigate` — systematic debugging tools
@@ -80,8 +80,7 @@ Create/update:
 Create 6-10 high-signal workspace memories.
 
 ### 7) Token efficiency + cross-IDE support
-- `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation + model selection guide)
-- `bootstrap/model-selection-reference.md` (on-demand model cost database, excluded from indexing)
+- `.windsurf/rules/00-token-efficiency.md` (always_on, quota conservation)
 - `.codeiumignore` (exclude large/generated files from indexing)
 - `.github/copilot-instructions.md` (VS Code Copilot cross-IDE support)
 - `CLAUDE.md` (Claude Code cross-IDE support)

@@ -7,7 +7,7 @@ It is read on-demand by the `/bootstrap-wizard` workflow, NOT loaded into every 
 
 ## Solution Architect Discovery Interview
 
-Ask the user to fill `bootstrap/Bootstrap-Project-Intake.md`.
+Ask the user to fill `nexus/Bootstrap-Project-Intake.md`.
 If they already provided intake in chat, reuse it. Ask only missing fields.
 
 Interview behavior:
@@ -102,10 +102,10 @@ NOT external-customers, no oncall, low/medium governance, low complexity,
 
 ## File Mapping
 
-- Fast → `bootstrap/1Fast-ws-Bootstrap.md`
-- Team → `bootstrap/2Team-ws-Bootstrap.md`
-- Enterprise → `bootstrap/3Enterprise-ws-Bootstrap.md`
-- Fallback → `bootstrap/Uni-WindsurfBootstrap.md`
+- Fast → `nexus/1Fast-ws-Bootstrap.md`
+- Team → `nexus/2Team-ws-Bootstrap.md`
+- Enterprise → `nexus/3Enterprise-ws-Bootstrap.md`
+- Fallback → `nexus/Uni-WindsurfBootstrap.md`
 
 ---
 
