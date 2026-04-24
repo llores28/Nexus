@@ -147,6 +147,18 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
     run_health(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
 
 
+@cli.command("journal")
+@click.argument("subcommand", type=click.Choice(["session-start", "session-end", "log", "status", "diff", "export"]))
+@click.argument("args", nargs=-1)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
+@click.option("--project-dir", default=".", help="Project directory.")
+@click.pass_context
+def journal_cmd(ctx, subcommand, args, output_format, project_dir):
+    """Project journal — cross-session state tracking, git diff, and dashboard export."""
+    from nexus.cli.tools.journal import run_journal
+    run_journal(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
+
+
 @cli.command("supply-chain")
 @click.argument("subcommand", type=click.Choice(["scan", "ioc", "audit", "advisories"]))
 @click.argument("args", nargs=-1)

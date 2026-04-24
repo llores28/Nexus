@@ -56,7 +56,41 @@ python nexus/cli/bs_cli.py research docs <q> # Search docs
 python nexus/cli/bs_cli.py scrape page <url> # Scrape a page
 python nexus/cli/bs_cli.py local-env up      # Start containers
 python nexus/cli/bs_cli.py scaffold <name>   # Create new CLI tool
+python nexus/cli/bs_cli.py journal session-start  # Start session, show last state
+python nexus/cli/bs_cli.py journal log "<msg>"    # Log a change event
+python nexus/cli/bs_cli.py journal session-end    # Close session, capture changes
+python nexus/cli/bs_cli.py journal export         # Generate state-dashboard.html
+python nexus/cli/bs_cli.py journal status         # Show current project state
 ```
+
+## Project State (Cross-Agent Contract)
+
+All AI agents (Cascade, Claude Code, Cursor, or any future tool) MUST follow this protocol:
+
+1. **Before starting any multi-step task**: read `.nexus/state.md` if it exists.
+   - Respect "What's Done" — do not revert recently completed fixes.
+   - Check "Blockers" before proceeding.
+
+2. **After completing a significant change**: append a log entry:
+   ```
+   python nexus/cli/bs_cli.py journal log "<brief description>"
+   ```
+
+3. **Starting a new work session**: run:
+   ```
+   python nexus/cli/bs_cli.py journal session-start --project-dir .
+   ```
+
+4. **Ending a work session**: run:
+   ```
+   python nexus/cli/bs_cli.py journal session-end --project-dir .
+   python nexus/cli/bs_cli.py journal export --project-dir .
+   ```
+
+5. **State files** (tool-agnostic, plain text):
+   - `.nexus/state.md` — human + AI readable ground truth
+   - `.nexus/state.json` — machine-readable
+   - `.nexus/state-dashboard.html` — visual dashboard (static HTML)
 
 ## Model Selection
 

@@ -4,3 +4,7 @@ nexus/model-selection-reference.md
 
 # Cache directories
 .cache/
+
+# Nexus journal — exclude machine-readable JSON and raw diffs (keep state.md + dashboard indexed)
+.nexus/state.json
+.nexus/*.json
