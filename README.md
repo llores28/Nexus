@@ -33,7 +33,7 @@ Markdown files with YAML frontmatter that control AI behavior. Each rule has an 
 | `glob` | Loaded when matching files are touched | Component-specific rules |
 
 **Current rules**: 2
-- `00-token-efficiency.md` — always-on, interactive model selection + token-saving discipline
+- `00-token-efficiency.md` — always-on, token-saving discipline and quota conservation
 - `01-project-state.md` — always-on, read `.nexus/state.md` before edits to prevent regressions
 
 Bootstrapped projects generate 4–8 additional rules depending on template tier.
@@ -183,21 +183,6 @@ Built into every CLI tool:
 - **Command safety** — `safe_command_args()` prevents shell injection
 - **Secret detection** — regex-based scanning for API keys, tokens, passwords
 - **Audit logging** — every CLI invocation logged to `.cache/bs-cli/audit.jsonl`
-
-### Model Selection Guidance
-The `00-token-efficiency.md` rule (always-on) provides a 5-tier model selection guide that recommends the cheapest capable model for each task:
-
-| Complexity | Examples | Recommended Model | Cost |
-|---|---|---|---|
-| **Simple** | Typos, formatting, boilerplate | SWE-1.5 | Free |
-| **Moderate** | Multi-file edits, unit tests | GPT-5 Low | 0.5x |
-| **Complex** | Refactoring, API integration | GPT-5 Med / Gemini 3.1 Pro | 1x |
-| **Expert** | Architecture, security audit | Claude Sonnet 4.6 / GPT-5 High | 2x |
-| **Frontier** | Threat modeling, novel design | Claude Opus 4.6 | 2-3x |
-
-**How it works**: The always-on rule instructs the AI to assess task complexity before starting, then recommend the optimal model. The full model database lives in `bootstrap/model-selection-reference.md` (excluded from indexing to save tokens, loaded on-demand).
-
-**What it doesn't do**: Actual model switching happens manually in Windsurf's UI. Nexus provides the recommendation; the user makes the selection.
 
 ### Token Efficiency Infrastructure
 Multiple layers reduce unnecessary token consumption:
