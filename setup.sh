@@ -4,15 +4,42 @@
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
 #   # or, from a local clone:
-#   ./setup.sh
+#   ./setup.sh                  # fresh init OR safe upgrade (auto-detected)
+#   ./setup.sh --upgrade-only   # just refresh the Nexus package; skip nexus init
+#   ./setup.sh --refresh        # on upgrade, also regenerate BOOTSTRAP.md
 #
-# Creates a project-local .venv, installs (or upgrades) Nexus into it, then
-# runs `nexus init` to scaffold the current project with a guided wizard.
+# Behavior:
+#   - Brand-new project (no .nexus/state.json): creates .venv, installs Nexus,
+#     runs `nexus init` (interactive 7-question wizard).
+#   - Already-bootstrapped project (.nexus/state.json present): creates/reuses
+#     .venv, upgrades the Nexus package, runs `nexus init --upgrade` to re-validate
+#     git hooks and run the health check. Does NOT re-prompt the wizard.
+#     Does NOT overwrite BOOTSTRAP.md unless --refresh is also passed.
+#   - --upgrade-only: just install/upgrade the package and exit. Useful for
+#     refreshing the tool on a project that doesn't use `nexus init` scaffolding
+#     (e.g. you only want the CLI for `nexus journal`).
 
 set -euo pipefail
 
 NEXUS_REPO="https://github.com/llores28/Nexus.git"
 PROJECT_DIR="$(pwd)"
+
+UPGRADE_ONLY=0
+REFRESH=0
+for arg in "$@"; do
+  case "$arg" in
+    --upgrade-only) UPGRADE_ONLY=1 ;;
+    --refresh)      REFRESH=1 ;;
+    -h|--help)
+      sed -n '2,20p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "Unknown flag: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
 
 info() { printf "\n\033[1;34m==> %s\033[0m\n" "$*"; }
 warn() { printf "\n\033[1;33m!!  %s\033[0m\n" "$*"; }
@@ -65,29 +92,69 @@ else
   exit 1
 fi
 
-# --- 4. Install / upgrade Nexus ---
+# --- 4. Detect prior Nexus install (informational) ---
+PRIOR_VERSION=""
+if python -m pip show nexus-bootstrap >/dev/null 2>&1; then
+  PRIOR_VERSION="$(python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
+  info "Existing Nexus install detected: nexus-bootstrap ${PRIOR_VERSION}"
+else
+  info "No existing Nexus install detected (first install in this venv)"
+fi
+
+# --- 5. Install / upgrade Nexus ---
 info "Upgrading pip"
 python -m pip install --quiet --upgrade pip
 
 if [ "$MODE" = "clone" ]; then
-  info "Installing Nexus (editable) from local clone"
+  if [ -n "$PRIOR_VERSION" ]; then
+    info "Reinstalling Nexus (editable) from local clone"
+  else
+    info "Installing Nexus (editable) from local clone"
+  fi
   python -m pip install --quiet -e .
 else
-  info "Installing / upgrading Nexus from $NEXUS_REPO"
+  if [ -n "$PRIOR_VERSION" ]; then
+    info "Upgrading Nexus from $NEXUS_REPO"
+  else
+    info "Installing Nexus from $NEXUS_REPO"
+  fi
   python -m pip install --quiet --upgrade "git+${NEXUS_REPO}"
 fi
 
-# --- 5. Run nexus init (auto-detect upgrade) ---
-UPGRADE_FLAG=""
-if [ -f "$PROJECT_DIR/.nexus/state.json" ]; then
-  UPGRADE_FLAG="--upgrade"
-  info "Existing .nexus/ detected — running upgrade"
+NEW_VERSION="$(python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
+if [ -n "$PRIOR_VERSION" ] && [ "$PRIOR_VERSION" != "$NEW_VERSION" ]; then
+  echo "   nexus-bootstrap: $PRIOR_VERSION -> $NEW_VERSION"
+else
+  echo "   nexus-bootstrap: $NEW_VERSION"
 fi
 
-# shellcheck disable=SC2086
-nexus init --project-dir "$PROJECT_DIR" $UPGRADE_FLAG
+# --- 6. --upgrade-only: stop here ---
+if [ "$UPGRADE_ONLY" -eq 1 ]; then
+  info "Package upgrade complete (--upgrade-only)."
+  echo "   Skipping 'nexus init' as requested."
+  if [ -f "$VENV/Scripts/activate" ]; then
+    echo "   Activate the venv:  . .venv/Scripts/activate"
+  else
+    echo "   Activate the venv:  . .venv/bin/activate"
+  fi
+  exit 0
+fi
 
-# --- 6. Done ---
+# --- 7. Run nexus init (auto-detect upgrade vs fresh) ---
+INIT_FLAGS=()
+if [ -f "$PROJECT_DIR/.nexus/state.json" ]; then
+  INIT_FLAGS+=(--upgrade)
+  if [ "$REFRESH" -eq 1 ]; then
+    INIT_FLAGS+=(--refresh)
+  fi
+  info "Already-bootstrapped project detected (.nexus/state.json present) -- running upgrade"
+elif [ "$REFRESH" -eq 1 ]; then
+  warn "--refresh has no effect on a fresh init (BOOTSTRAP.md doesn't exist yet). Ignoring."
+fi
+
+nexus init --project-dir "$PROJECT_DIR" "${INIT_FLAGS[@]}"
+
+# --- 8. Done ---
 info "Setup complete."
 echo "   Activate the venv in future sessions:"
 if [ -f "$VENV/Scripts/activate" ]; then

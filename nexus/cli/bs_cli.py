@@ -149,15 +149,19 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
 
 @cli.command("init")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
-@click.option("--upgrade", is_flag=True, help="Re-run init for an existing project (skips wizard, reuses tier).")
+@click.option("--upgrade", is_flag=True,
+              help="Maintain an already-bootstrapped project: reuse tier, re-validate hooks. Never overwrites BOOTSTRAP.md.")
+@click.option("--refresh", is_flag=True,
+              help="Used with --upgrade to also regenerate BOOTSTRAP.md from the current tier template.")
 @click.option("--template", type=click.Choice(["fast", "team", "enterprise"]), default=None,
               help="Skip the wizard and force a specific tier.")
 @click.option("--project-dir", default=".", help="Project to initialize.")
 @click.pass_context
-def init_cmd(ctx, output_format, upgrade, template, project_dir):
-    """Bootstrap the current project with Nexus (interactive guided wizard)."""
+def init_cmd(ctx, output_format, upgrade, refresh, template, project_dir):
+    """Bootstrap (or upgrade) the current project with Nexus."""
     from nexus.cli.tools.init import run_init
-    run_init(project_dir=project_dir, output_format=output_format, upgrade=upgrade, template=template)
+    run_init(project_dir=project_dir, output_format=output_format,
+             upgrade=upgrade, refresh=refresh, template=template)
 
 
 @cli.command("journal")

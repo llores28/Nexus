@@ -3,10 +3,24 @@
 # Usage:
 #   irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
 #   # or, from a local clone:
-#   .\setup.ps1
+#   .\setup.ps1                  # fresh init OR safe upgrade (auto-detected)
+#   .\setup.ps1 -UpgradeOnly     # just refresh the Nexus package; skip nexus init
+#   .\setup.ps1 -Refresh         # on upgrade, also regenerate BOOTSTRAP.md
 #
-# Creates a project-local .venv, installs (or upgrades) Nexus into it, then
-# runs `nexus init` to scaffold the current project with a guided wizard.
+# Behavior:
+#   - Brand-new project (no .nexus/state.json): creates .venv, installs Nexus,
+#     runs `nexus init` (interactive 7-question wizard).
+#   - Already-bootstrapped project (.nexus/state.json present): creates/reuses
+#     .venv, upgrades the Nexus package, runs `nexus init --upgrade` to re-validate
+#     git hooks and run the health check. Does NOT re-prompt the wizard.
+#     Does NOT overwrite BOOTSTRAP.md unless -Refresh is also passed.
+#   - -UpgradeOnly: just install/upgrade the package and exit. Useful for
+#     refreshing the tool on a project that doesn't use `nexus init` scaffolding.
+
+param(
+    [switch]$UpgradeOnly,
+    [switch]$Refresh
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -73,30 +87,79 @@ if (-not (Test-Path $activate)) {
 }
 & $activate
 
-# --- 4. Install / upgrade Nexus ---
+# --- 4. Detect prior Nexus install (informational) ---
+$priorVersion = ""
+$pipShow = & python -m pip show nexus-bootstrap 2>$null
+if ($LASTEXITCODE -eq 0 -and $pipShow) {
+    $line = $pipShow | Select-String -Pattern '^Version:'
+    if ($line) {
+        $priorVersion = ($line.Line -split '\s+', 2)[1].Trim()
+    }
+    Info "Existing Nexus install detected: nexus-bootstrap $priorVersion"
+} else {
+    Info "No existing Nexus install detected (first install in this venv)"
+}
+
+# --- 5. Install / upgrade Nexus ---
 Info "Upgrading pip"
 & python -m pip install --quiet --upgrade pip
 
 if ($mode -eq "clone") {
-    Info "Installing Nexus (editable) from local clone"
+    if ($priorVersion) {
+        Info "Reinstalling Nexus (editable) from local clone"
+    } else {
+        Info "Installing Nexus (editable) from local clone"
+    }
     & python -m pip install --quiet -e .
 } else {
-    Info "Installing / upgrading Nexus from $NexusRepo"
+    if ($priorVersion) {
+        Info "Upgrading Nexus from $NexusRepo"
+    } else {
+        Info "Installing Nexus from $NexusRepo"
+    }
     & python -m pip install --quiet --upgrade "git+$NexusRepo"
 }
 if ($LASTEXITCODE -ne 0) { Err "pip install failed"; exit 1 }
 
-# --- 5. Run nexus init (auto-detect upgrade) ---
-$upgradeFlag = @()
-if (Test-Path (Join-Path $ProjectDir ".nexus\state.json")) {
-    $upgradeFlag = @("--upgrade")
-    Info "Existing .nexus/ detected — running upgrade"
+$pipShow2 = & python -m pip show nexus-bootstrap 2>$null
+$newVersion = ""
+if ($pipShow2) {
+    $line = $pipShow2 | Select-String -Pattern '^Version:'
+    if ($line) {
+        $newVersion = ($line.Line -split '\s+', 2)[1].Trim()
+    }
+}
+if ($priorVersion -and $priorVersion -ne $newVersion) {
+    Write-Host "   nexus-bootstrap: $priorVersion -> $newVersion"
+} else {
+    Write-Host "   nexus-bootstrap: $newVersion"
 }
 
-& nexus init --project-dir $ProjectDir @upgradeFlag
+# --- 6. -UpgradeOnly: stop here ---
+if ($UpgradeOnly) {
+    Info "Package upgrade complete (-UpgradeOnly)."
+    Write-Host "   Skipping 'nexus init' as requested."
+    Write-Host "   Activate the venv:  & .venv\Scripts\Activate.ps1"
+    exit 0
+}
+
+# --- 7. Run nexus init (auto-detect upgrade vs fresh) ---
+$initFlags = @()
+$stateJson = Join-Path $ProjectDir ".nexus\state.json"
+if (Test-Path $stateJson) {
+    $initFlags += "--upgrade"
+    if ($Refresh) {
+        $initFlags += "--refresh"
+    }
+    Info "Already-bootstrapped project detected (.nexus/state.json present) -- running upgrade"
+} elseif ($Refresh) {
+    Warn "-Refresh has no effect on a fresh init (BOOTSTRAP.md doesn't exist yet). Ignoring."
+}
+
+& nexus init --project-dir $ProjectDir @initFlags
 if ($LASTEXITCODE -ne 0) { Err "nexus init exited with $LASTEXITCODE"; exit $LASTEXITCODE }
 
-# --- 6. Done ---
+# --- 8. Done ---
 Info "Setup complete."
 Write-Host "   Activate the venv in future sessions:"
 Write-Host "     PowerShell:  & .venv\Scripts\Activate.ps1"

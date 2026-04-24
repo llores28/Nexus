@@ -1,11 +1,18 @@
 """
-Nexus init -- bootstrap the current project.
+Nexus init -- bootstrap (or maintain) a project with Nexus.
 
-Flow: prereqs check → wizard (or --template) → copy template → journal session-start
-       → git hooks → health check.
+Two modes:
 
-Idempotent: re-running with `--upgrade` skips the wizard interview and overwrites
-hooks/state safely.
+  Fresh init (no .nexus/state.json):
+    Wizard (or --template) -> write BOOTSTRAP.md -> session-start -> hooks -> health.
+
+  Upgrade (state.json + bootstrap_tier already exist):
+    Reuse the prior tier choice, re-validate git hooks (idempotent), re-run health
+    check. NEVER overwrites BOOTSTRAP.md unless --refresh is passed.
+
+The upgrade path is what `setup.sh` / `setup.ps1` invoke after a `pip install
+--upgrade` so an existing project gets the new hook templates and a sanity
+check without a wizard interruption or a clobbered prompt file.
 """
 
 import json
@@ -49,14 +56,11 @@ def _gate_prereqs(output_format: str) -> None:
     click.echo(f"  [ok] Git {git.get('version', '?')}")
 
 
-def _copy_template(template_src: Path, project_dir: Path, tier: str, overwrite: bool) -> Path:
-    """Copy the chosen tier template to <project>/BOOTSTRAP.md with a header."""
-    dest = project_dir / BOOTSTRAP_FILENAME
-    if dest.exists() and not overwrite:
-        if not click.confirm(f"\n  {BOOTSTRAP_FILENAME} already exists. Overwrite?", default=False):
-            click.echo("  Keeping existing BOOTSTRAP.md.")
-            return dest
+def _write_template(template_src: Path, project_dir: Path, tier: str) -> Path:
+    """Write the chosen tier template to <project>/BOOTSTRAP.md with a header.
 
+    Caller is responsible for confirming overwrite if the file already exists.
+    """
     if not template_src.exists():
         raise click.ClickException(
             f"Template not found at {template_src}. "
@@ -64,6 +68,7 @@ def _copy_template(template_src: Path, project_dir: Path, tier: str, overwrite: 
             "Try cloning the repo and running setup.sh from there."
         )
 
+    dest = project_dir / BOOTSTRAP_FILENAME
     body = template_src.read_text(encoding="utf-8")
     header = (
         f"# Nexus Bootstrap Prompt -- {tier.title()} tier\n"
@@ -80,7 +85,7 @@ def _copy_template(template_src: Path, project_dir: Path, tier: str, overwrite: 
 
 
 def _persist_tier(project_dir: Path, selection: dict[str, Any]) -> None:
-    """Write the chosen tier into .nexus/state.json so `--upgrade` can reuse it."""
+    """Write the chosen tier into .nexus/state.json so future runs reuse it."""
     from nexus.cli.tools.journal import _load_state, _save_state
 
     state = _load_state(project_dir)
@@ -90,90 +95,156 @@ def _persist_tier(project_dir: Path, selection: dict[str, Any]) -> None:
 
 
 def _load_existing_tier(project_dir: Path) -> Optional[str]:
-    """Read tier from existing state.json (used by --upgrade)."""
+    """Read tier from existing state.json. Returns None if file or field missing."""
     sj = project_dir / STATE_JSON_REL
     if not sj.exists():
         return None
     try:
         data = json.loads(sj.read_text(encoding="utf-8"))
-        return data.get("bootstrap_tier")
+        tier = data.get("bootstrap_tier")
+        return tier if tier in ("fast", "team", "enterprise") else None
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _do_fresh(pd: Path, output_format: str, template: Optional[str]) -> dict[str, Any]:
+    """Fresh init: wizard (or --template), write BOOTSTRAP.md, return selection."""
+    from nexus.cli.tools import wizard
+
+    if template:
+        selection = wizard.apply_tier_explicit(template)
+        click.echo(f"\n  Tier (forced via --template): {selection['tier']}")
+    else:
+        selection = wizard.run_wizard(pd, output_format)
+
+    template_src = Path(selection["template_path"])
+    dest = pd / BOOTSTRAP_FILENAME
+    if dest.exists():
+        if not click.confirm(
+            f"\n  {BOOTSTRAP_FILENAME} already exists. Overwrite?",
+            default=False,
+        ):
+            click.echo("  Keeping existing BOOTSTRAP.md.")
+        else:
+            _write_template(template_src, pd, selection["tier"])
+            click.echo(f"\n  [ok] Wrote {BOOTSTRAP_FILENAME} ({selection['tier']} tier)")
+    else:
+        _write_template(template_src, pd, selection["tier"])
+        click.echo(f"\n  [ok] Wrote {BOOTSTRAP_FILENAME} ({selection['tier']} tier)")
+
+    from nexus.cli.tools.journal import _cmd_session_start
+    _cmd_session_start(pd, "human")
+
+    _persist_tier(pd, selection)
+    return selection
+
+
+def _do_upgrade(pd: Path, refresh: bool, template: Optional[str]) -> dict[str, Any]:
+    """Upgrade: reuse tier (or accept --template override), re-validate hooks.
+
+    NEVER touches BOOTSTRAP.md unless --refresh is passed (or it doesn't exist
+    yet, which would be unusual for an upgrade path).
+    """
+    from nexus.cli.tools import wizard
+
+    if template:
+        selection = wizard.apply_tier_explicit(template)
+        click.echo(f"\n  Tier override via --template: {selection['tier']}")
+    else:
+        existing_tier = _load_existing_tier(pd)
+        if not existing_tier:
+            click.echo(
+                "\n  ERROR: --upgrade requires an existing bootstrap_tier in "
+                ".nexus/state.json, but none was found.\n"
+                "  Either run `nexus init` (no --upgrade) for a fresh setup,\n"
+                "  or pass --template <fast|team|enterprise> to skip the wizard."
+            )
+            raise click.Abort()
+        selection = wizard.apply_tier_explicit(existing_tier)
+        click.echo(f"\n  Reusing previously chosen tier: {existing_tier}")
+
+    bootstrap_path = pd / BOOTSTRAP_FILENAME
+    if refresh or not bootstrap_path.exists():
+        template_src = Path(selection["template_path"])
+        _write_template(template_src, pd, selection["tier"])
+        action = "Refreshed" if refresh and bootstrap_path.exists() else "Wrote"
+        click.echo(f"\n  [ok] {action} {BOOTSTRAP_FILENAME} ({selection['tier']} tier)")
+    else:
+        click.echo(f"\n  [ok] {BOOTSTRAP_FILENAME} preserved (pass --refresh to regenerate)")
+
+    # Re-validate hooks (idempotent — _cmd_setup_hooks skips already-installed ones).
+    from nexus.cli.tools.journal import _cmd_setup_hooks, _find_git_root
+    if _find_git_root(pd):
+        click.echo("\n  Re-validating git hooks...")
+        _cmd_setup_hooks(pd, "human")
+    else:
+        click.echo("\n  (no git repo -- skipping hook validation)")
+
+    _persist_tier(pd, selection)
+    return selection
 
 
 def run_init(
     project_dir: str = ".",
     output_format: str = "human",
     upgrade: bool = False,
+    refresh: bool = False,
     template: Optional[str] = None,
 ) -> None:
-    """Bootstrap the current project with Nexus."""
+    """Bootstrap or upgrade the current project with Nexus."""
     pd = Path(project_dir).resolve()
 
-    if output_format != "human" and template is None:
+    if output_format != "human" and template is None and not upgrade:
         emit(make_result(
             "init",
             Status.FAIL,
-            message="Non-human format requires --template (the wizard is interactive).",
+            message="Non-human format requires --template (the wizard is interactive) or --upgrade.",
         ), OutputFormat(output_format))
         raise click.Abort()
 
-    is_upgrade = upgrade or (pd / STATE_JSON_REL).exists()
-    _print_banner("upgrade" if is_upgrade else "fresh setup")
+    if refresh and not upgrade and not (pd / STATE_JSON_REL).exists():
+        click.echo("\n  --refresh has no effect without --upgrade or an existing project. Ignoring.")
+        refresh = False
 
+    state_present = (pd / STATE_JSON_REL).exists()
+    is_upgrade = upgrade or state_present
+
+    _print_banner("upgrade" if is_upgrade else "fresh setup")
     _gate_prereqs(output_format)
 
-    from nexus.cli.tools import wizard
-
-    if template:
-        selection = wizard.apply_tier_explicit(template)
-        click.echo(f"\n  Tier (forced via --template): {selection['tier']}")
-    elif is_upgrade:
-        existing_tier = _load_existing_tier(pd)
-        if existing_tier:
-            selection = wizard.apply_tier_explicit(existing_tier)
-            click.echo(f"\n  Reusing previously chosen tier: {existing_tier}")
-        else:
-            click.echo("\n  No previous tier found. Running wizard.")
-            selection = wizard.run_wizard(pd, output_format)
+    if is_upgrade:
+        selection = _do_upgrade(pd, refresh=refresh, template=template)
     else:
-        selection = wizard.run_wizard(pd, output_format)
-
-    template_src = Path(selection["template_path"])
-    bootstrap_path = _copy_template(template_src, pd, selection["tier"], overwrite=is_upgrade)
-    click.echo(f"\n  [ok] Wrote {bootstrap_path.name} ({selection['tier']} tier)")
-
-    from nexus.cli.tools.journal import _cmd_session_start
-    _cmd_session_start(pd, "human")
-
-    _persist_tier(pd, selection)
+        selection = _do_fresh(pd, output_format=output_format, template=template)
 
     click.echo("\n  Running health check...")
     from nexus.cli.tools.health import run_health
     run_health(subcommand="check", output_format="human", project_dir=str(pd))
 
     click.echo("\n" + "=" * 60)
-    click.echo("  Nexus init complete.")
+    click.echo(f"  Nexus init complete ({'upgrade' if is_upgrade else 'fresh setup'}).")
     click.echo("=" * 60)
     click.echo(f"\n  Next steps:")
-    click.echo(f"    1. Open {bootstrap_path.name} and paste it into your AI assistant")
-    click.echo(f"    2. Activate the venv in future sessions:")
+    if not is_upgrade or refresh:
+        click.echo(f"    1. Open {BOOTSTRAP_FILENAME} and paste it into your AI assistant")
+    click.echo(f"    {'2' if (not is_upgrade or refresh) else '1'}. Activate the venv in future sessions:")
     if sys.platform == "win32":
         click.echo(f"         PowerShell:  & .venv\\Scripts\\Activate.ps1")
         click.echo(f"         Git Bash:    . .venv/Scripts/activate")
     else:
         click.echo(f"         . .venv/bin/activate")
-    click.echo(f"    3. Track progress:  nexus journal status\n")
+    click.echo(f"    {'3' if (not is_upgrade or refresh) else '2'}. Track progress:  nexus journal status\n")
 
     if output_format != "human":
         emit(make_result(
             "init",
             Status.PASS,
-            message=f"Nexus initialized ({selection['tier']} tier).",
+            message=f"Nexus {'upgraded' if is_upgrade else 'initialized'} ({selection['tier']} tier).",
             details={
+                "mode": "upgrade" if is_upgrade else "fresh",
                 "tier": selection["tier"],
                 "template_path": selection["template_path"],
-                "bootstrap_path": str(bootstrap_path),
-                "upgrade": is_upgrade,
+                "bootstrap_path": str(pd / BOOTSTRAP_FILENAME),
+                "refresh": refresh,
             },
         ), OutputFormat(output_format))
