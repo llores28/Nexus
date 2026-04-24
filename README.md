@@ -32,7 +32,9 @@ Markdown files with YAML frontmatter that control AI behavior. Each rule has an 
 | `model_decision` | AI decides when relevant | Security rules, testing rules |
 | `glob` | Loaded when matching files are touched | Component-specific rules |
 
-**Current rules**: 1 (`00-token-efficiency.md` — always-on, provides model selection guidance and token-saving discipline)
+**Current rules**: 2
+- `00-token-efficiency.md` — always-on, interactive model selection + token-saving discipline
+- `01-project-state.md` — always-on, read `.nexus/state.md` before edits to prevent regressions
 
 Bootstrapped projects generate 4–8 additional rules depending on template tier.
 
@@ -55,7 +57,7 @@ Reusable skill definitions that Cascade invokes when tasks match. Each skill has
 ### Workflows System (`.windsurf/workflows/`)
 Slash-command workflows that execute multi-step processes. Each workflow is a markdown file with a `description` in YAML frontmatter.
 
-**11 workflows installed:**
+**12 workflows installed:**
 
 | Slash Command | Workflow | Purpose |
 |---|---|---|
@@ -70,6 +72,7 @@ Slash-command workflows that execute multi-step processes. Each workflow is a ma
 | `/create-tool` | `create-tool.md` | Scaffold new CLI tool |
 | `/prereqs-check` | `prereqs-check.md` | Check prerequisites |
 | `/migrate-toolkit` | `migrate-toolkit.md` | Migrate existing project to Nexus |
+| `/session-handoff` | `session-handoff.md` | Close session, capture changes, export dashboard |
 
 ### CLI Toolkit (`nexus/cli/`)
 Python command-line tools that provide automation for development tasks. All tools emit structured JSON by default, with `--format human` for terminal output and `--format yaml` for YAML.
@@ -92,6 +95,43 @@ Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl` via the secu
 | `scaffold` | — | Generates a new CLI tool from template with security framework integration. |
 | `local-env` | `init`, `build`, `up`, `down`, `logs`, `status`, `validate` | Docker container management and validation. |
 | `health` | `check`, `components`, `security`, `usage`, `report` | 4-tier Nexus health monitoring (see below). |
+| `journal` | `session-start`, `session-end`, `log`, `status`, `diff`, `export`, `setup-hooks` | Cross-session project state tracking, git diff detection, HTML dashboard export, and git hook installation. |
+| `supply-chain` | `scan`, `ioc`, `audit`, `advisories` | Detect compromised npm packages (axios backdoor), scan for malicious IOCs, and review security advisories. |
+
+### Project Journal System (`journal` command)
+Persistent cross-session project state tracking — tool-agnostic (works with Cascade, Claude Code, Cursor, or any AI agent).
+
+**How it works:**
+
+| Subcommand | What It Does |
+|---|---|
+| `session-start` | Stamps a new session, shows last state summary, offers `git init` if no repo found |
+| `session-end` | Auto-detects changed files (git diff or mtime fallback), prompts for summary + next tasks |
+| `log "<msg>"` | Appends a one-line event — Cascade calls this automatically after significant changes |
+| `status` | Displays current `.nexus/state.md` in the terminal |
+| `diff` | Shows files changed since session start |
+| `export` | Generates `.nexus/state-dashboard.html` — self-contained dark-mode HTML dashboard |
+| `setup-hooks` | Installs git `post-commit` (auto-log) + `pre-push` (auto-export) hooks |
+
+**State files written per project:**
+
+| File | Purpose | AI-readable? |
+|---|---|---|
+| `.nexus/state.md` | Human + AI ground truth: done, next, blockers, session log | ✅ Indexed by Windsurf, read by Claude Code |
+| `.nexus/state.json` | Machine-readable source for dashboard | Excluded from indexing |
+| `.nexus/state-dashboard.html` | Static self-contained dashboard | Open in browser |
+
+**Automatic tracking (after one-time setup):**
+- **On workspace open**: `.vscode/tasks.json` runs `session-start` silently via `runOn: folderOpen`
+- **On every `git commit`**: `post-commit` hook auto-logs the commit message to `.nexus/state.md`
+- **On every `git push`**: `pre-push` hook regenerates the dashboard
+- **After Cascade edits**: `01-project-state.md` rule instructs Cascade to call `journal log` after significant changes
+
+**One-time setup:**
+```bash
+python nexus/cli/bs_cli.py journal session-start --project-dir .
+python nexus/cli/bs_cli.py journal setup-hooks --project-dir .
+```
 
 ### Health Monitoring System (`health` command)
 Validates that all Nexus components are properly configured and working together.
@@ -112,13 +152,29 @@ Nexus generates configuration files for 4 AI-powered IDEs:
 
 | File | IDE | Contents |
 |---|---|---|
-| `AGENTS.md` | Windsurf + VS Code Copilot | Project overview, constraints, commands, model selection |
+| `AGENTS.md` | Windsurf + VS Code Copilot | Project overview, constraints, commands, model selection, cross-agent state contract |
 | `.windsurf/rules/` | Windsurf | Activation-triggered behavioral rules |
 | `.github/copilot-instructions.md` | VS Code Copilot | Project context, coding standards, commands |
 | `CLAUDE.md` | Claude Code | Project constraints and commands |
 | `.cursorrules` | Cursor | Project context and development guidelines |
+| `.vscode/tasks.json` | VS Code / Windsurf | Auto-run `session-start` on workspace open; manual tasks for handoff, export, hooks |
 
-### Security Framework (`bootstrap/cli/security.py`)
+**Cross-Agent State Contract** (`AGENTS.md`): All AI agents (Cascade, Claude Code, Cursor) are instructed to read `.nexus/state.md` before starting work and to call `journal log` after completing significant changes — ensuring consistent project tracking regardless of which tool is active.
+
+### Supply Chain Security (`supply-chain` command)
+Detects compromised npm packages and system-level indicators of compromise (IOCs).
+
+**Subcommands:**
+- `scan` — scan `package.json` / lockfiles for known-malicious packages and vulnerable versions
+- `ioc` — check system paths and environment for RAT/backdoor IOCs
+- `audit` — full audit combining scan + IOC check with remediation guidance
+- `advisories` — display current known-malicious package block list
+
+**Known threats in block list:** `axios@1.14.1`, `axios@0.30.4` (RAT via `plain-crypto-js`), `@shadanai/openclaw`, `@qqbrowser/openclaw-qbot`
+
+Triggered automatically by `.windsurf/rules/supply-chain-security.md` (glob on `package.json`, lockfiles).
+
+### Security Framework (`nexus/cli/security.py`)
 Built into every CLI tool:
 
 - **Path sanitization** — `validate_path()` prevents directory traversal
@@ -184,7 +240,14 @@ python nexus/cli/bs_cli.py health check --format human
 # Target: 100/100 score
 ```
 
-### 5. Use Workflows
+### 5. Initialize Project Journal
+```bash
+python nexus/cli/bs_cli.py journal session-start --project-dir .
+python nexus/cli/bs_cli.py journal setup-hooks --project-dir .
+```
+VS Code/Windsurf will prompt **"Allow automatic tasks?"** — click **Allow** once to enable auto session-start on workspace open.
+
+### 6. Use Workflows
 ```bash
 /nexus-health       # Validate system health
 /smoketest          # Verify project health
@@ -192,6 +255,7 @@ python nexus/cli/bs_cli.py health check --format human
 /research           # Research dependencies/docs
 /local-env          # Container management
 /create-tool        # Scaffold new CLI tools
+/session-handoff    # Close session, capture changes, export dashboard
 ```
 
 ---
@@ -209,7 +273,7 @@ Nexus/
 │   ├── wizard-reference.md            # Wizard logic (excluded from indexing)
 │   ├── model-selection-reference.md   # Model cost database (excluded from indexing)
 │   └── cli/
-│       ├── bs_cli.py                  # CLI entry point (8 commands)
+│       ├── bs_cli.py                  # CLI entry point (12 commands)
 │       ├── security.py                # Security framework
 │       ├── utils.py                   # Shared utilities
 │       ├── requirements.txt           # Python dependencies
@@ -221,17 +285,28 @@ Nexus/
 │           ├── scrape.py              # Web scraping
 │           ├── scaffold.py            # Tool scaffolding
 │           ├── local_env.py           # Container management
-│           └── health.py              # Health monitoring (4-tier)
+│           ├── health.py              # Health monitoring (4-tier)
+│           ├── journal.py             # Project journal (session tracking, git diff, hooks)
+│           ├── journal_dashboard.py   # Static HTML dashboard generator
+│           └── supply_chain.py        # Supply chain security scanner
+├── .nexus/                            # Per-project state (auto-created)
+│   ├── state.md                       # Human + AI readable project state
+│   ├── state.json                     # Machine-readable state
+│   └── state-dashboard.html           # Generated static dashboard
+├── .vscode/
+│   └── tasks.json                     # Auto session-start + manual journal tasks
 ├── .windsurf/
 │   ├── rules/
-│   │   └── 00-token-efficiency.md     # Always-on: token saving + model selection
+│   │   ├── 00-token-efficiency.md     # Always-on: token saving + model selection
+│   │   ├── 01-project-state.md        # Always-on: read state before edits (regression guard)
+│   │   └── supply-chain-security.md   # Glob: npm dependency security checks
 │   ├── skills/                        # 8 skill definitions
-│   └── workflows/                     # 11 slash-command workflows
-├── AGENTS.md                          # Windsurf + Copilot agent instructions
+│   └── workflows/                     # 12 slash-command workflows
+├── AGENTS.md                          # Windsurf + Copilot + cross-agent state contract
 ├── CLAUDE.md                          # Claude Code instructions
 ├── .cursorrules                       # Cursor IDE instructions
 ├── .github/copilot-instructions.md    # VS Code Copilot instructions
-├── .codeiumignore                     # Excludes large files from indexing
+├── .codeiumignore                     # Excludes large files + state JSON from indexing
 └── .gitignore                         # Sensitive file exclusions
 ```
 
@@ -243,6 +318,7 @@ Nexus/
 - **Add a workflow**: Create `.windsurf/workflows/<name>.md` with `description` in frontmatter
 - **Add a CLI tool**: Run `python nexus/cli/bs_cli.py scaffold <name>` — inherits security framework
 - **Add a rule**: Create `.windsurf/rules/<name>.md` with activation trigger in frontmatter
+- **Track project state**: Run `journal session-start` + `journal setup-hooks` in any project bootstrapped from Nexus
 
 ---
 

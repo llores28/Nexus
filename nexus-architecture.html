@@ -774,7 +774,7 @@
 <body>
     <div class="container">
         <h1>Nexus + Cascade Architecture</h1>
-        <p class="subtitle">An honest view of what works, what's guidance-only, and what's missing</p>
+        <p class="subtitle">An honest view of what works, what's guidance-only — now with cross-session project tracking</p>
         
         <!-- Simple Flow -->
         <div class="flow-section">
@@ -825,7 +825,7 @@
                             <span class="feature-title">CLI Toolkit</span>
                             <span class="badge badge-works">Works</span>
                         </div>
-                        <div class="feature-desc">8 commands that run and produce visible output</div>
+                        <div class="feature-desc">10 commands that run and produce visible output</div>
                         <div class="feature-example">python nexus/cli/bs_cli.py health check</div>
                     </div>
                     
@@ -857,6 +857,26 @@
                         </div>
                         <div class="feature-desc">Path validation, secret scanning, audit logging</div>
                         <div class="feature-example">bs_cli.py debug secrets-scan</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">📓</span>
+                            <span class="feature-title">Project Journal</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">Cross-session state tracking with git diff, auto hooks, and HTML dashboard</div>
+                        <div class="feature-example">bs_cli.py journal session-start</div>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-header">
+                            <span class="feature-icon">🔗</span>
+                            <span class="feature-title">Supply Chain Scanner</span>
+                            <span class="badge badge-works">Works</span>
+                        </div>
+                        <div class="feature-desc">Detects backdoored npm packages and system IOCs</div>
+                        <div class="feature-example">bs_cli.py supply-chain audit .</div>
                     </div>
                 </div>
             </div>
@@ -1205,6 +1225,89 @@
             
             <div class="windsurf-note" style="margin-top: 25px; background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3);">
                 <p style="color: #4ade80;"><strong>This is real!</strong> The rule now instructs Cascade to use the <code>ask_user_question</code> tool, which presents these clickable options in the chat.</p>
+            </div>
+        </div>
+        
+        <!-- Project Journal Architecture -->
+        <div class="model-section" style="border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.05); margin-top: 40px;">
+            <div class="model-header">
+                <h2 style="color: #a78bfa;">📓 Project Journal — Cross-Session State Tracking</h2>
+                <p>Tool-agnostic tracking that works with Cascade, Claude Code, Cursor, and any future AI agent</p>
+            </div>
+            
+            <div class="authority-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px;">
+                <div class="authority-card" style="text-align:center;">
+                    <div class="authority-icon">🖥️</div>
+                    <div class="authority-title">VS Code Task</div>
+                    <div class="authority-role">On Workspace Open</div>
+                    <div class="authority-desc">runOn: folderOpen → session-start fires silently every time you open the project</div>
+                </div>
+                <div class="authority-card" style="text-align:center;">
+                    <div class="authority-icon">🔨</div>
+                    <div class="authority-title">post-commit Hook</div>
+                    <div class="authority-role">On Every git commit</div>
+                    <div class="authority-desc">Auto-appends commit message to .nexus/state.md — zero friction tracking</div>
+                </div>
+                <div class="authority-card" style="text-align:center;">
+                    <div class="authority-icon">🚀</div>
+                    <div class="authority-title">pre-push Hook</div>
+                    <div class="authority-role">On Every git push</div>
+                    <div class="authority-desc">Regenerates state-dashboard.html before code leaves your machine</div>
+                </div>
+                <div class="authority-card" style="text-align:center;">
+                    <div class="authority-icon">🤖</div>
+                    <div class="authority-title">Cascade Rule</div>
+                    <div class="authority-role">After Each Edit</div>
+                    <div class="authority-desc">01-project-state.md instructs Cascade to call journal log after significant changes</div>
+                </div>
+            </div>
+            
+            <div class="model-flow">
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">1</div>
+                    <div class="step-content">
+                        <div class="step-title">One-time setup per project</div>
+                        <div class="step-desc"><code>journal session-start</code> → <code>journal setup-hooks</code> → VS Code prompts Allow auto tasks</div>
+                    </div>
+                </div>
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">2</div>
+                    <div class="step-content">
+                        <div class="step-title">State written to .nexus/state.md</div>
+                        <div class="step-desc">Plain Markdown — readable by Cascade (Windsurf indexed), Claude Code, Cursor, or any agent that reads project files</div>
+                    </div>
+                </div>
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">3</div>
+                    <div class="step-content">
+                        <div class="step-title">Cascade reads state before every edit</div>
+                        <div class="step-desc">Rule 01-project-state.md (always_on) tells Cascade: check What's Done — do NOT revert recent fixes</div>
+                        <div class="step-status"><span class="badge badge-works">Regression guard</span></div>
+                    </div>
+                </div>
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">4</div>
+                    <div class="step-content">
+                        <div class="step-title">Session close via /session-handoff</div>
+                        <div class="step-desc">diff → session-end (prompts summary + next tasks) → export dashboard HTML → handoff block for next session</div>
+                        <div class="step-status"><span class="badge badge-works">Works</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #4ade80; font-weight: 700; margin-bottom: 8px;">📄 .nexus/state.md</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Human + AI readable. Indexed by Windsurf. Contains: Status, What's Done, What's Next, Blockers, Session Log.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #60a5fa; font-weight: 700; margin-bottom: 8px;">⚙️ .nexus/state.json</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Machine-readable source for dashboard. Excluded from Windsurf indexing to save tokens.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #fb923c; font-weight: 700; margin-bottom: 8px;">📊 state-dashboard.html</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Self-contained dark-mode HTML. Status cards, session timeline, file heatmap, git log, audit trail. No server needed.</div>
+                </div>
             </div>
         </div>
         

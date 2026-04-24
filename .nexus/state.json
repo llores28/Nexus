@@ -6,10 +6,12 @@
   "session_start_time": null,
   "baseline_mtimes": {},
   "done": [
-    "[2026-04-24 S0] Implemented journal tool, dashboard, rule, workflow, and AGENTS.md contract"
+    "[2026-04-24 S0] Implemented journal tool, dashboard, rule, workflow, and AGENTS.md contract",
+    "[2026-04-24 S0] git commit: feat: Auto-tracking via git hooks + VS Code workspace task",
+    "[2026-04-24 S0] Updated README.md and nexus-architecture.html with journal system, supply-chain, VS Code tasks, git hooks, cross-agent contract"
   ],
   "next": [],
   "blockers": [],
   "session_log": [],
-  "last_updated": "2026-04-24T15:33:12Z"
+  "last_updated": "2026-04-24T16:01:04Z"
 }
