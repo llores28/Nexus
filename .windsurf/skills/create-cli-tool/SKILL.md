@@ -11,11 +11,11 @@ description: Scaffold a new project-specific CLI tool that inherits the security
 
 ## Command
 ```
-python bootstrap/cli/bs_cli.py scaffold <name> --description "What this tool does"
+python nexus/cli/bs_cli.py scaffold <name> --description "What this tool does"
 ```
 
 ## What gets created
-- `bootstrap/cli/tools/<name>.py` — tool implementation with security imports
+- `nexus/cli/tools/<name>.py` — tool implementation with security imports
 - Registration snippet for `bs_cli.py` (must be added manually)
 
 ## Guardrails (enforced by template)

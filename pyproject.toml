@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-bootstrap"
+version = "0.1.0"
+description = "Intelligent Project Operating System — generates AI-powered operating systems for any repository"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Lannys Lores" }]
+keywords = ["ai", "scaffolding", "windsurf", "claude-code", "copilot", "cursor"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = [
+    "click==8.1.7",
+    "rich==13.9.4",
+    "pyyaml==6.0.2",
+    "httpx==0.27.2",
+    "beautifulsoup4==4.12.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+nexus = "nexus.cli.bs_cli:cli"
+
+[project.urls]
+Repository = "https://github.com/lannys-lores/ws-bootstrap-master"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nexus*"]
+exclude = ["tests*", ".nexus*", ".windsurf*", ".cache*"]
+
+[tool.setuptools.package-data]
+nexus = ["*.md", "*.html"]

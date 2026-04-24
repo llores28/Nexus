@@ -4,6 +4,47 @@ Nexus is a reusable bootstrap toolkit that generates project-specific AI-powered
 
 ---
 
+## Getting Started (one command)
+
+Run from the directory of the project you want to bootstrap.
+
+### Bash / Git Bash
+```bash
+curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
+```
+
+### PowerShell
+```powershell
+irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
+```
+
+### Or clone first
+```bash
+git clone https://github.com/llores28/Nexus.git && cd Nexus && ./setup.sh
+```
+
+The script:
+1. Creates a project-local `.venv`
+2. Installs (or upgrades) Nexus into it
+3. Runs `nexus init` — a guided wizard recommends the right tier (Fast / Team / Enterprise) based on 7 questions about your project
+4. Drops `BOOTSTRAP.md` (your AI prompt), initializes git + journal hooks, runs a health check
+
+Re-run the same command anytime to upgrade — `.venv` and existing tier choice are auto-detected.
+
+### Verify it worked
+```bash
+nexus health check       # should report 100/100
+nexus journal status      # shows the project state dashboard
+```
+
+### Power-user flags
+```bash
+nexus init --template enterprise   # skip wizard, force a tier
+nexus init --upgrade               # re-run init on an existing project
+```
+
+---
+
 ## What's In the Box
 
 ### Bootstrap Templates (3 tiers)
@@ -21,7 +62,6 @@ Supporting files:
 - `nexus/Bootstrap-Project-Intake.md` — project intake questionnaire
 - `nexus/PRD-Template.md` — PRD generation template
 - `nexus/wizard-reference.md` — wizard logic reference
-- `nexus/model-selection-reference.md` — full model cost database (8.9KB, excluded from indexing)
 
 ### Rules System (`.windsurf/rules/`)
 Markdown files with YAML frontmatter that control AI behavior. Each rule has an activation trigger:
@@ -152,7 +192,7 @@ Nexus generates configuration files for 4 AI-powered IDEs:
 
 | File | IDE | Contents |
 |---|---|---|
-| `AGENTS.md` | Windsurf + VS Code Copilot | Project overview, constraints, commands, model selection, cross-agent state contract |
+| `AGENTS.md` | Windsurf + VS Code Copilot | Project overview, constraints, commands, model cost reference, cross-agent state contract |
 | `.windsurf/rules/` | Windsurf | Activation-triggered behavioral rules |
 | `.github/copilot-instructions.md` | VS Code Copilot | Project context, coding standards, commands |
 | `CLAUDE.md` | Claude Code | Project constraints and commands |
@@ -188,7 +228,7 @@ Built into every CLI tool:
 Multiple layers reduce unnecessary token consumption:
 
 - **Rule activation triggers** — non-critical rules load only when relevant (`model_decision`, `glob`)
-- **`.codeiumignore`** — excludes large reference files from Windsurf indexing (wizard-reference.md, model-selection-reference.md)
+- **`.codeiumignore`** — excludes large reference files from Windsurf indexing (e.g. wizard-reference.md)
 - **Always-on discipline** — the token-efficiency rule enforces concise responses, batch tool calls, and Fast Context search before file reads
 - **Structured CLI output** — JSON by default for machine consumption, minimizing verbose text
 
@@ -256,7 +296,6 @@ Nexus/
 │   ├── Bootstrap-Project-Intake.md    # Project intake questionnaire
 │   ├── PRD-Template.md                # PRD generation template
 │   ├── wizard-reference.md            # Wizard logic (excluded from indexing)
-│   ├── model-selection-reference.md   # Model cost database (excluded from indexing)
 │   └── cli/
 │       ├── bs_cli.py                  # CLI entry point (12 commands)
 │       ├── security.py                # Security framework
@@ -282,7 +321,7 @@ Nexus/
 │   └── tasks.json                     # Auto session-start + manual journal tasks
 ├── .windsurf/
 │   ├── rules/
-│   │   ├── 00-token-efficiency.md     # Always-on: token saving + model selection
+│   │   ├── 00-token-efficiency.md     # Always-on: token saving discipline
 │   │   ├── 01-project-state.md        # Always-on: read state before edits (regression guard)
 │   │   └── supply-chain-security.md   # Glob: npm dependency security checks
 │   ├── skills/                        # 8 skill definitions

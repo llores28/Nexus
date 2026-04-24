@@ -12,7 +12,7 @@ If not, run `/bootstrap-wizard` first — this migration is for projects that al
 
 ## 2) Check for conflicts (safety)
 Verify none of the new files already exist:
-- `bootstrap/cli/`
+- `nexus/cli/`
 - `.windsurf/skills/prereqs-check/`
 - `.windsurf/skills/smoketest/`
 - `.windsurf/skills/debug-investigate/`
@@ -24,11 +24,11 @@ Verify none of the new files already exist:
 If any exist, skip those — they were already migrated.
 
 ## 3) Copy CLI toolkit
-Copy the `bootstrap/cli/` directory from ws-bootstrap-master into the project.
+Copy the `nexus/cli/` directory from ws-bootstrap-master into the project.
 
 ## 4) Install Python dependencies
 ```
-pip install -r bootstrap/cli/requirements.txt
+pip install -r nexus/cli/requirements.txt
 ```
 
 ## 5) Copy new skills
@@ -52,13 +52,13 @@ Review existing `.windsurf/rules/` and suggest changing non-critical rules from 
 ## 7) Run prerequisites check
 // turbo
 ```
-python bootstrap/cli/bs_cli.py prereqs --format human
+python nexus/cli/bs_cli.py prereqs --format human
 ```
 
 ## 8) Run quick smoketest
 // turbo
 ```
-python bootstrap/cli/bs_cli.py smoketest --level quick --format human
+python nexus/cli/bs_cli.py smoketest --level quick --format human
 ```
 
 ## 9) Report

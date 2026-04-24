@@ -4,13 +4,13 @@ auto_execution_mode: 3
 ---
 # Bootstrap Wizard
 
-Goal: choose the correct bootstrap prompt from `bootstrap/` using structured project intake.
+Goal: choose the correct bootstrap prompt from `nexus/` using structured project intake.
 
 ## Step 1 — Load decision reference
-Read `bootstrap/wizard-reference.md` for full decision logic (interview questions, scenario triggers, normalization rules, selection algorithm, output format).
+Read `nexus/wizard-reference.md` for full decision logic (interview questions, scenario triggers, normalization rules, selection algorithm, output format).
 
 ## Step 2 — Gather intake
-1. Ask user to fill `bootstrap/Bootstrap-Project-Intake.md` or reuse intake already in chat.
+1. Ask user to fill `nexus/Bootstrap-Project-Intake.md` or reuse intake already in chat.
 2. Ask only missing required fields, max 12 discovery questions.
 3. Detect scenario triggers (multi-tenant, regulated-data, high-SLA) and ask branch follow-ups per reference doc.
 

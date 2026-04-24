@@ -1,6 +1,5 @@
 # Prevent Windsurf from indexing large reference docs (read on-demand by rules/workflows)
 nexus/wizard-reference.md
-nexus/model-selection-reference.md
 
 # Cache directories
 .cache/

@@ -49,7 +49,7 @@ class AuditGroup(click.Group):
 
 
 @click.group(cls=AuditGroup)
-@click.version_option(version="0.1.0", prog_name="bs-cli")
+@click.version_option(version="0.1.0", prog_name="nexus")
 def cli():
     """Nexus CLI Toolkit — sniper-agent tools for Cascade."""
     pass
@@ -145,6 +145,19 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
     """Nexus health check — validate components work cohesively."""
     from nexus.cli.tools.health import run_health
     run_health(subcommand=subcommand, output_format=output_format, project_dir=project_dir)
+
+
+@cli.command("init")
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
+@click.option("--upgrade", is_flag=True, help="Re-run init for an existing project (skips wizard, reuses tier).")
+@click.option("--template", type=click.Choice(["fast", "team", "enterprise"]), default=None,
+              help="Skip the wizard and force a specific tier.")
+@click.option("--project-dir", default=".", help="Project to initialize.")
+@click.pass_context
+def init_cmd(ctx, output_format, upgrade, template, project_dir):
+    """Bootstrap the current project with Nexus (interactive guided wizard)."""
+    from nexus.cli.tools.init import run_init
+    run_init(project_dir=project_dir, output_format=output_format, upgrade=upgrade, template=template)
 
 
 @cli.command("journal")

@@ -5,7 +5,7 @@ For Windsurf, see `.windsurf/rules/` and `AGENTS.md`. For GitHub Copilot, see `.
 
 ## Project
 
-Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with automatic model selection and cross-IDE support.
+Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with cross-IDE support.
 
 ## Stack
 - Python 3.10+, Click, Rich, httpx, beautifulsoup4

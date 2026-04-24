@@ -17,7 +17,7 @@ Examine the health score and any issues found. A score > 80 indicates healthy co
 ## 3) If issues found, run detailed report
 // turbo
 ```
-python bootstrap/cli/bs_cli.py health report --format human
+python nexus/cli/bs_cli.py health report --format human
 ```
 
 ## 4) Fix critical issues first
@@ -36,11 +36,11 @@ python nexus/cli/bs_cli.py health check --format human
 ## 6) Optional: Check security posture separately
 // turbo
 ```
-python bootstrap/cli/bs_cli.py health security --format human
+python nexus/cli/bs_cli.py health security --format human
 ```
 
 ## 7) Optional: Review CLI usage analytics
 // turbo
 ```
-python bootstrap/cli/bs_cli.py health usage --format human
+python nexus/cli/bs_cli.py health usage --format human
 ```

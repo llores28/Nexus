@@ -1,13 +1,13 @@
 # Nexus - Intelligent Project Operating System
 
-Nexus creates a complete, AI-powered project operating system that automatically optimizes development workflows, agent behaviors, and model selection based on task complexity.
+Nexus creates a complete, AI-powered project operating system that optimizes development workflows and agent behaviors based on task complexity.
 
 ## Project Overview
 
 This is `Nexus`, a reusable bootstrap toolkit that generates project-specific AI-powered operating systems including rules, agents, skills, workflows, and documentation.
 
 ### Key directories
-- `nexus/` — Bootstrap prompt templates (Fast/Team/Enterprise) and model selection reference
+- `nexus/` — Bootstrap prompt templates (Fast/Team/Enterprise) and a model cost reference doc
 - `nexus/cli/` — Python CLI tools (smoketest, debug, research, scrape, local-env, scaffold)
 - `.windsurf/rules/` — Nexus rule files with activation triggers
 - `.windsurf/skills/` — Reusable skill definitions (SKILL.md + resources)
@@ -36,7 +36,6 @@ This is `Nexus`, a reusable bootstrap toolkit that generates project-specific AI
 - Keep responses concise — no restating known context.
 - For simple edits, suggest Ctrl+I (Command mode, free, no quota cost).
 - For routine tasks, use SWE-1.5 (free model) or SWE-1.
-- **Auto model selection**: Nexus automatically selects the optimal model based on task complexity via `nexus/model-selection-reference.md`.
 - Suggest user run tests manually rather than auto-executing.
 
 ## Testing
@@ -93,14 +92,12 @@ All AI agents (Cascade, Claude Code, Cursor, or any future tool) MUST follow thi
    - `.nexus/state.json` — machine-readable
    - `.nexus/state-dashboard.html` — visual dashboard (static HTML)
 
-## Model Selection
+## Model Cost Reference (indicative)
 
-Nexus includes intelligent model selection that automatically chooses the optimal AI model based on task complexity:
+There is no automated selection layer — the AI assistant or user picks a model based on task complexity. Rough tiers:
 
 - **Simple tasks** (typos, formatting): SWE-1.5 (Free)
 - **Moderate tasks** (multi-file edits): GPT-5 Low (0.5x)
 - **Complex tasks** (refactoring): GPT-5 Med / Gemini 3.1 Pro (1x)
 - **Expert tasks** (architecture): Claude Sonnet 4.6 / GPT-5 High (2x)
 - **Frontier tasks** (threat modeling): Claude Opus 4.6 (2-3x)
-
-See `nexus/model-selection-reference.md` for the complete model database and selection algorithm.

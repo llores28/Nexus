@@ -194,6 +194,8 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
         "blockers": [],
         "session_log": [],
         "last_updated": None,
+        "bootstrap_tier": None,
+        "bootstrap_template": None,
     }
     if not state_path.exists():
         return defaults
@@ -285,6 +287,22 @@ def _save_diff_snapshot(project_dir: Path, session_n: int, diff_text: str) -> No
 
 # --- Subcommand implementations ---
 
+def _hooks_installed(git_root: Path) -> bool:
+    """Return True if Nexus journal hooks are present in .git/hooks/."""
+    hooks_dir = git_root / ".git" / "hooks"
+    for name in ("post-commit", "pre-push"):
+        hp = hooks_dir / name
+        if not hp.exists():
+            return False
+        try:
+            content = hp.read_text(encoding="utf-8")
+        except OSError:
+            return False
+        if "nexus" not in content.lower() and "bs_cli" not in content.lower():
+            return False
+    return True
+
+
 def _cmd_session_start(project_dir: Path, output_format: str) -> None:
     """Start a new session."""
     import click
@@ -309,6 +327,16 @@ def _cmd_session_start(project_dir: Path, output_format: str) -> None:
         state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
 
     _save_state(project_dir, state)
+
+    # Offer to install git hooks if a git repo exists but hooks are missing.
+    # Human format only — non-interactive callers (json/yaml) skip the prompt.
+    if git_root and output_format == "human" and not _hooks_installed(git_root):
+        if click.confirm(
+            "\n  Auto-tracking hooks not installed. Install them now?\n"
+            "  (post-commit logs every commit; pre-push regenerates the dashboard)",
+            default=True,
+        ):
+            _cmd_setup_hooks(project_dir, output_format)
 
     done_recent = state["done"][-5:] if state["done"] else []
     next_items = state["next"]
@@ -436,7 +464,18 @@ def _cmd_session_end(project_dir: Path, output_format: str) -> None:
 def _cmd_log(project_dir: Path, message: str, output_format: str) -> None:
     """Append a one-line log entry (non-interactive)."""
     state = _load_state(project_dir)
-    session_n = state.get("session_number", 1)
+
+    # Auto-bootstrap session 1 if no session has been started yet.
+    # Without this, hook-driven logs accumulate under S0 and the dashboard
+    # shows session_start_time=null forever.
+    if state.get("session_number", 0) < 1:
+        state["session_number"] = 1
+        state["session_start_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        git_root = _find_git_root(project_dir)
+        if not git_root:
+            state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
+
+    session_n = state["session_number"]
     date_short = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     entry = f"[{date_short} S{session_n}] {message.strip()}"
     state["done"].append(entry)
@@ -636,7 +675,7 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
     if output_format == "human":
         click.echo(f"\n  Git hooks path: {hooks_dir}")
         for h in installed:
-            click.echo(f"  ✓ {h}")
+            click.echo(f"  [ok] {h}")
         for s in skipped:
             click.echo(f"  - {s}")
         click.echo()

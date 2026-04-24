@@ -1,0 +1,3 @@
+# Nexus runtime dependencies (mirrors nexus/cli/requirements.txt)
+# Prefer `pip install -e .` (uses pyproject.toml) for development.
+-r nexus/cli/requirements.txt

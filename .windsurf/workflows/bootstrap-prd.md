@@ -16,7 +16,7 @@ Use these inputs as source of truth:
    - architecture summary
    - risk note
    - confidence
-2. `bootstrap/Bootstrap-Project-Intake.md`
+2. `nexus/Bootstrap-Project-Intake.md`
 3. Existing project context (`README*`, `docs/*`) when available
 
 If key inputs are missing, ask focused follow-up questions before writing `docs/PRD.md`.
@@ -36,7 +36,7 @@ Conflict policy:
 
 ## 3) Drafting steps
 
-1. Create/update `docs/PRD.md` using `bootstrap/PRD-Template.md`.
+1. Create/update `docs/PRD.md` using `nexus/PRD-Template.md`.
 2. Fill all sections with evidence from wizard output and intake.
 3. Add measurable acceptance criteria for each requirement.
 4. Add a `Cohesion Matrix` mapping each PRD requirement to:

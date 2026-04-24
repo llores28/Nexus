@@ -16,13 +16,13 @@ description: Local container validation and Docker Desktop sharing — NOT produ
 
 ## Commands
 ```
-python bootstrap/cli/bs_cli.py local-env init
-python bootstrap/cli/bs_cli.py local-env build
-python bootstrap/cli/bs_cli.py local-env up
-python bootstrap/cli/bs_cli.py local-env down
-python bootstrap/cli/bs_cli.py local-env logs
-python bootstrap/cli/bs_cli.py local-env status
-python bootstrap/cli/bs_cli.py local-env validate
+python nexus/cli/bs_cli.py local-env init
+python nexus/cli/bs_cli.py local-env build
+python nexus/cli/bs_cli.py local-env up
+python nexus/cli/bs_cli.py local-env down
+python nexus/cli/bs_cli.py local-env logs
+python nexus/cli/bs_cli.py local-env status
+python nexus/cli/bs_cli.py local-env validate
 ```
 
 ## Workflow (typical sequence)

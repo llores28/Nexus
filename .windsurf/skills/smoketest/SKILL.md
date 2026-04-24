@@ -16,8 +16,8 @@ description: Run tiered smoke tests to verify project health after changes or bo
 
 ## Commands
 ```
-python bootstrap/cli/bs_cli.py smoketest --level quick --format json
-python bootstrap/cli/bs_cli.py smoketest --level full --format json
+python nexus/cli/bs_cli.py smoketest --level quick --format json
+python nexus/cli/bs_cli.py smoketest --level full --format json
 ```
 
 ## Levels

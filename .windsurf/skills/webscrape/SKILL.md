@@ -12,10 +12,10 @@ description: Fetch and extract content from external URLs for docs, APIs, and co
 
 ## Commands
 ```
-python bootstrap/cli/bs_cli.py scrape page <url>
-python bootstrap/cli/bs_cli.py scrape api <url>
-python bootstrap/cli/bs_cli.py scrape links <url>
-python bootstrap/cli/bs_cli.py scrape docs <url> --depth 2
+python nexus/cli/bs_cli.py scrape page <url>
+python nexus/cli/bs_cli.py scrape api <url>
+python nexus/cli/bs_cli.py scrape links <url>
+python nexus/cli/bs_cli.py scrape docs <url> --depth 2
 ```
 
 ## When to use CLI vs native tools

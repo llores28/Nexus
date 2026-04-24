@@ -5,7 +5,7 @@ For Windsurf (Cascade), see `.windsurf/rules/` and `AGENTS.md`.
 
 ## Project Context
 
-Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with automatic model selection and cross-IDE support.
+Nexus — Intelligent Project Operating System. Generates project-specific AI-powered operating systems (rules, agents, skills, workflows, docs) with cross-IDE support.
 - **Stack**: Python 3.10+, Click, Rich, httpx, beautifulsoup4
 - **Entry point**: `nexus/cli/bs_cli.py`
 - **Templates**: `nexus/1Fast-ws-Bootstrap.md`, `2Team-ws-Bootstrap.md`, `3Enterprise-ws-Bootstrap.md`
