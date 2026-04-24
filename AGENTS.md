@@ -61,6 +61,7 @@ python nexus/cli/bs_cli.py journal log "<msg>"    # Log a change event
 python nexus/cli/bs_cli.py journal session-end    # Close session, capture changes
 python nexus/cli/bs_cli.py journal export         # Generate state-dashboard.html
 python nexus/cli/bs_cli.py journal status         # Show current project state
+python nexus/cli/bs_cli.py journal setup-hooks    # Install git hooks (post-commit auto-log, pre-push dashboard)
 ```
 
 ## Project State (Cross-Agent Contract)

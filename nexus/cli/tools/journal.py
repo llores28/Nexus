@@ -561,6 +561,97 @@ def _load_audit_log(project_dir: Path, last_n: int = 20) -> list[dict]:
         return []
 
 
+# --- Git hook templates ---
+
+_POST_COMMIT_HOOK = """\
+#!/bin/sh
+# Nexus journal — auto-log on every git commit
+NEXUS_ROOT="$(git rev-parse --show-toplevel)"
+python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal log "git commit: $(git log -1 --pretty=%s)" \\
+  --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
+"""
+
+_PRE_PUSH_HOOK = """\
+#!/bin/sh
+# Nexus journal — export dashboard before every push
+NEXUS_ROOT="$(git rev-parse --show-toplevel)"
+python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal export \\
+  --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
+"""
+
+
+def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
+    """Install git hooks for automatic journal tracking."""
+    import click
+    import stat
+
+    git_root = _find_git_root(project_dir)
+    if git_root is None:
+        emit(make_result(
+            "journal-setup-hooks",
+            Status.FAIL,
+            message="No git repo found. Run 'journal session-start' first to init one.",
+        ), OutputFormat(output_format))
+        return
+
+    hooks_dir = git_root / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    installed = []
+    skipped = []
+
+    hooks = {
+        "post-commit": _POST_COMMIT_HOOK,
+        "pre-push": _PRE_PUSH_HOOK,
+    }
+
+    for hook_name, hook_content in hooks.items():
+        hook_path = hooks_dir / hook_name
+        if hook_path.exists():
+            existing = hook_path.read_text(encoding="utf-8")
+            if "nexus" in existing.lower() or "bs_cli" in existing.lower():
+                skipped.append(f"{hook_name} (already installed)")
+                continue
+            if output_format == "human":
+                overwrite = click.confirm(
+                    f"  Hook '{hook_name}' already exists (not by Nexus). Overwrite?",
+                    default=False,
+                )
+                if not overwrite:
+                    skipped.append(f"{hook_name} (kept existing)")
+                    continue
+
+        hook_path.write_text(hook_content, encoding="utf-8")
+        hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        installed.append(hook_name)
+
+    msg_parts = []
+    if installed:
+        msg_parts.append(f"Installed: {', '.join(installed)}")
+    if skipped:
+        msg_parts.append(f"Skipped: {', '.join(skipped)}")
+
+    message = " | ".join(msg_parts) if msg_parts else "Nothing to do."
+
+    if output_format == "human":
+        click.echo(f"\n  Git hooks path: {hooks_dir}")
+        for h in installed:
+            click.echo(f"  ✓ {h}")
+        for s in skipped:
+            click.echo(f"  - {s}")
+        click.echo()
+        click.echo("  post-commit : auto-logs commit message to .nexus/state.md")
+        click.echo("  pre-push    : regenerates state-dashboard.html before push")
+        click.echo()
+
+    emit(make_result(
+        "journal-setup-hooks",
+        Status.PASS if installed else Status.WARN,
+        message=message,
+        details={"hooks_dir": str(hooks_dir), "installed": installed, "skipped": skipped},
+    ), OutputFormat(output_format)) if output_format != "human" else None
+
+
 # --- CLI dispatcher ---
 
 def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str) -> None:
@@ -583,6 +674,8 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         _cmd_diff(pd, output_format)
     elif subcommand == "export":
         _cmd_export(pd, output_format)
+    elif subcommand == "setup-hooks":
+        _cmd_setup_hooks(pd, output_format)
     else:
         emit(make_result(
             "journal",

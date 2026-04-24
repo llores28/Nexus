@@ -148,7 +148,7 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
 
 
 @cli.command("journal")
-@click.argument("subcommand", type=click.Choice(["session-start", "session-end", "log", "status", "diff", "export"]))
+@click.argument("subcommand", type=click.Choice(["session-start", "session-end", "log", "status", "diff", "export", "setup-hooks"]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
 @click.option("--project-dir", default=".", help="Project directory.")
