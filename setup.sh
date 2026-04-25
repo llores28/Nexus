@@ -21,6 +21,33 @@
 
 set -euo pipefail
 
+# --- Guard: detect Windows WSL shim without a real distro ---
+# When a user runs `curl ... | bash` from cmd.exe or PowerShell on Windows,
+# `bash` resolves to C:\Windows\System32\bash.exe (the WSL relay).
+# If no WSL Linux distro is installed, the relay exits with:
+#   WSL ERROR: execvpe(/bin/bash) failed: No such file or directory
+# We detect this early and print actionable guidance.
+if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi 'microsoft' /proc/version 2>/dev/null; then
+  : # running inside a real WSL distro — fine, continue
+elif uname -s 2>/dev/null | grep -qi 'mingw\|msys\|cygwin'; then
+  : # running inside Git Bash / MSYS2 — fine, continue
+else
+  # Check if we look like a bare WSL relay invocation (no /bin/sh features)
+  if [ ! -d /home ] && [ ! -f /etc/os-release ] 2>/dev/null; then
+    printf "\n\033[1;31mXX  ERROR: No WSL Linux distro detected.\033[0m\n"
+    printf "    You appear to be running 'bash' from cmd.exe or PowerShell on Windows.\n"
+    printf "    On Windows, 'bash' resolves to the WSL relay (C:\\Windows\\System32\\bash.exe),\n"
+    printf "    which requires an installed WSL distro to work.\n\n"
+    printf "    \033[1;32mFix — choose one:\033[0m\n"
+    printf "    1) PowerShell (recommended):\n"
+    printf "       irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex\n\n"
+    printf "    2) Git Bash (open 'Git Bash' from Start menu, then run):\n"
+    printf "       curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash\n\n"
+    printf "    3) Install WSL: wsl --install  (then reboot and re-run)\n\n"
+    exit 1
+  fi
+fi
+
 NEXUS_REPO="https://github.com/llores28/Nexus.git"
 PROJECT_DIR="$(pwd)"
 

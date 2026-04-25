@@ -8,19 +8,31 @@ Nexus is a reusable bootstrap toolkit that generates project-specific AI-powered
 
 Run from the directory of the project you want to bootstrap.
 
-### Bash / Git Bash
-```bash
-curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
-```
-
-### PowerShell
+### Windows — PowerShell (recommended)
 ```powershell
 irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
 ```
 
+> **Windows users: use PowerShell or Git Bash — not `bash` from a cmd/PowerShell prompt.**
+> On Windows, typing `bash` in cmd or PowerShell invokes the WSL shim (`C:\Windows\System32\bash.exe`).
+> If no WSL distro is installed you will get:
+> `WSL ERROR: execvpe(/bin/bash) failed: No such file or directory`
+> Use the PowerShell command above, or open **Git Bash** and use the command below.
+
+### macOS / Linux / Git Bash (Windows)
+```bash
+curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
+```
+
+> On Windows, run this inside **Git Bash** (comes with [Git for Windows](https://git-scm.com/download/win)), not from cmd or PowerShell.
+
 ### Or clone first
 ```bash
+# macOS / Linux / Git Bash
 git clone https://github.com/llores28/Nexus.git && cd Nexus && ./setup.sh
+
+# Windows PowerShell
+git clone https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1
 ```
 
 The script:
