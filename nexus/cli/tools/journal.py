@@ -602,7 +602,7 @@ def _hooks_installed(git_root: Path) -> bool:
             return False
         try:
             content = hp.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return False
         if _HOOK_VERSION_TAG not in content:
             return False
@@ -610,13 +610,21 @@ def _hooks_installed(git_root: Path) -> bool:
 
 
 def _hook_status(hook_path: Path) -> str:
-    """Classify a hook file: 'missing', 'current', 'outdated', or 'foreign'."""
+    """Classify a hook file: 'missing', 'current', 'outdated', or 'foreign'.
+
+    Falls back to a permissive read (errors='replace') if utf-8 decoding fails
+    so a foreign hook authored in cp1252/latin-1 still classifies as 'foreign'
+    or 'outdated' rather than crashing the installer.
+    """
     if not hook_path.exists():
         return "missing"
     try:
         content = hook_path.read_text(encoding="utf-8")
-    except OSError:
-        return "foreign"
+    except (OSError, UnicodeDecodeError):
+        try:
+            content = hook_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "foreign"
     if _HOOK_VERSION_TAG in content:
         return "current"
     if "nexus" in content.lower() or "bs_cli" in content.lower():
@@ -1723,6 +1731,82 @@ def _cmd_decision(project_dir: Path, args: tuple, output_format: str) -> None:
              OutputFormat(output_format))
 
 
+# --- Phase 4: Blame (cross-reference a file across journal + git) ---
+
+def _cmd_blame(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Cross-reference a file across the journal and git history.
+
+    journal blame <file>   show commits, done entries, and daily mentions
+                           that reference the given file.
+    """
+    if not args:
+        emit(make_result("journal-blame", Status.FAIL,
+                         message="Usage: journal blame <file>"),
+             OutputFormat(output_format))
+        return
+
+    target = " ".join(args).strip()
+    target_short = Path(target).name
+    state = _load_state(project_dir)
+    git_root = _resolve_git_root(project_dir)
+
+    # Git: log restricted to the file path
+    commits: list[dict] = []
+    if git_root:
+        rc, out, _ = _git_run(
+            ["log", "-20", "--pretty=format:%H|%as|%s", "--", target],
+            git_root,
+        )
+        if rc == 0 and out:
+            for line in out.splitlines():
+                parts = line.split("|", 2)
+                if len(parts) == 3:
+                    commits.append({
+                        "hash": parts[0][:8],
+                        "date": parts[1],
+                        "message": parts[2],
+                    })
+
+    # State.done: entries whose text mentions the file
+    done_entries = [
+        d for d in state.get("done", [])
+        if target in d or target_short in d
+    ]
+
+    # Daily journal: line-level mentions across all daily files
+    daily_mentions: list[dict] = []
+    daily_dir = project_dir / DAILY_JOURNAL_DIR
+    if daily_dir.exists():
+        for daily_file in sorted(daily_dir.rglob("*.md")):
+            try:
+                lines = daily_file.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            for ln in lines:
+                if target in ln or (target_short and target_short in ln):
+                    daily_mentions.append({
+                        "file": str(daily_file.relative_to(project_dir)),
+                        "line": ln,
+                    })
+
+    msg = (
+        f"{len(commits)} commit(s), "
+        f"{len(done_entries)} done entry/ies, "
+        f"{len(daily_mentions)} daily mention(s) for {target}"
+    )
+    emit(make_result(
+        "journal-blame",
+        Status.INFO,
+        message=msg,
+        details={
+            "file": target,
+            "commits": commits,
+            "done_entries": done_entries[-10:],
+            "daily_mentions": daily_mentions[-10:],
+        },
+    ), OutputFormat(output_format))
+
+
 # --- CLI dispatcher ---
 
 def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str,
@@ -1758,6 +1842,8 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         _cmd_init_agents(pd, output_format)
     elif subcommand == "decision":
         _cmd_decision(pd, args, output_format)
+    elif subcommand == "blame":
+        _cmd_blame(pd, args, output_format)
     else:
         emit(make_result(
             "journal",
