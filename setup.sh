@@ -63,6 +63,13 @@ if [ -z "$PY" ]; then
 fi
 echo "   using: $PY ($($PY --version))"
 
+# --- 1b. Check git (required for pip install git+...) ---
+if ! command -v git >/dev/null 2>&1; then
+  err "git not found. Install git from https://git-scm.com/ and re-run."
+  exit 1
+fi
+echo "   git: $(git --version)"
+
 # --- 2. Detect mode: local-clone vs target-project ---
 MODE="target"
 if [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml" 2>/dev/null; then

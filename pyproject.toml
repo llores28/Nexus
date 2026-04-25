@@ -40,7 +40,7 @@ dev = [
 nexus = "nexus.cli.bs_cli:cli"
 
 [project.urls]
-Repository = "https://github.com/lannys-lores/ws-bootstrap-master"
+Repository = "https://github.com/llores28/Nexus"
 
 [tool.setuptools.packages.find]
 where = ["."]
