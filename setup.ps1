@@ -1,14 +1,23 @@
-# Nexus one-command setup / upgrade (PowerShell).
+# Nexus setup / upgrade (PowerShell).
 #
-# Usage:
-#   irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
-#   NOTE: 'irm ... | iex' does NOT support -UpgradeOnly / -Refresh flags.
-#   For flags, save the script first: irm ... -OutFile setup.ps1; .\setup.ps1 -UpgradeOnly
+# RECOMMENDED usage (avoids AMSI/Defender blocks):
+#
+#   Option A — clone the repo and run locally:
+#     git clone https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1
+#
+#   Option B — download to disk, inspect, then run:
+#     irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 -OutFile setup-nexus.ps1
+#     Unblock-File setup-nexus.ps1
+#     .\setup-nexus.ps1
+#
+#   NOTE: 'irm ... | iex' is blocked by Windows Defender AMSI on most systems
+#   (ScriptContainedMaliciousContent) because it is the canonical malware cradle.
+#   Use Option A or B above — AMSI does NOT flag local file execution.
 #
 #   If blocked by execution policy, run once:
 #   Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 #
-#   # or, from a local clone:
+#   Flags (only work when run from disk, not via irm|iex):
 #   .\setup.ps1                  # fresh init OR safe upgrade (auto-detected)
 #   .\setup.ps1 -UpgradeOnly     # just refresh the Nexus package; skip nexus init
 #   .\setup.ps1 -Refresh         # on upgrade, also regenerate BOOTSTRAP.md
@@ -29,6 +38,32 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# --- Guard: AMSI / irm|iex cradle detection ---
+# When this script is piped via `irm ... | iex`, $PSCommandPath is $null and
+# $MyInvocation.InvocationName is empty or "&". Windows Defender's AMSI hooks
+# the PowerShell parser on this delivery pattern and raises:
+#   ScriptContainedMaliciousContent,Microsoft.PowerShell.Commands.InvokeExpressionCommand
+# That error fires BEFORE this guard runs, so the block is AMSI-side.
+# However, if AMSI is not active (e.g. corporate allowlist, older Defender sigs),
+# this guard catches the pipe and redirects the user to the safe path.
+if (-not $PSCommandPath) {
+    Write-Host ""
+    Write-Host "!! AMSI WARNING: You are running this script via 'irm ... | iex'." -ForegroundColor Yellow
+    Write-Host "   Windows Defender blocks this delivery pattern as a security measure." -ForegroundColor Yellow
+    Write-Host "   If you received a 'ScriptContainedMaliciousContent' error, that is why." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "   Use the safe path instead (download -> inspect -> run):" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "     irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 -OutFile setup-nexus.ps1" -ForegroundColor White
+    Write-Host "     Unblock-File setup-nexus.ps1" -ForegroundColor White
+    Write-Host "     .\setup-nexus.ps1" -ForegroundColor White
+    Write-Host ""
+    Write-Host "   Or clone the repo and run locally (most reliable):" -ForegroundColor Cyan
+    Write-Host "     git clone https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1" -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
 
 $NexusRepo  = "https://github.com/llores28/Nexus.git"
 $ProjectDir = (Get-Location).Path

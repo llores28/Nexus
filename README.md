@@ -4,36 +4,59 @@ Nexus is a reusable bootstrap toolkit that generates project-specific AI-powered
 
 ---
 
-## Getting Started (one command)
+## Getting Started
 
 Run from the directory of the project you want to bootstrap.
 
-### Windows — PowerShell (recommended)
+### Recommended — clone first (all platforms, most reliable)
+
+```bash
+git clone https://github.com/llores28/Nexus.git
+cd Nexus
+```
+
+Then run the setup script for your platform:
+
+**Windows PowerShell:**
 ```powershell
-irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
+.\setup.ps1
+```
+
+**macOS / Linux / Git Bash:**
+```bash
+./setup.sh
+```
+
+---
+
+### Windows — one-liner (PowerShell)
+
+> ⚠️ **AMSI / Antivirus notice**: Windows Defender and most AV products block the `irm … | iex`
+> pattern on principle — it is the canonical malware delivery cradle. If you see
+> `ScriptContainedMaliciousContent`, that is expected behaviour. Use the **save → inspect → run**
+> path below instead.
+
+```powershell
+# Download to disk, inspect, then run — AMSI does NOT flag local file execution
+irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 -OutFile setup-nexus.ps1
+Unblock-File setup-nexus.ps1        # remove Mark-of-the-Web
+.\setup-nexus.ps1                   # runs normally; safe to delete after
 ```
 
 > **Windows users: use PowerShell or Git Bash — not `bash` from a cmd/PowerShell prompt.**
 > On Windows, typing `bash` in cmd or PowerShell invokes the WSL shim (`C:\Windows\System32\bash.exe`).
 > If no WSL distro is installed you will get:
 > `WSL ERROR: execvpe(/bin/bash) failed: No such file or directory`
-> Use the PowerShell command above, or open **Git Bash** and use the command below.
+
+---
 
 ### macOS / Linux / Git Bash (Windows)
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
 ```
 
-> On Windows, run this inside **Git Bash** (comes with [Git for Windows](https://git-scm.com/download/win)), not from cmd or PowerShell.
-
-### Or clone first
-```bash
-# macOS / Linux / Git Bash
-git clone https://github.com/llores28/Nexus.git && cd Nexus && ./setup.sh
-
-# Windows PowerShell
-git clone https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1
-```
+> On Windows, run this inside **Git Bash** (comes with [Git for Windows](https://git-scm.com/download/win)), not cmd or PowerShell.
 
 The script:
 1. Creates a project-local `.venv`
