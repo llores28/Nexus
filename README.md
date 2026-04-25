@@ -170,7 +170,7 @@ Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl` via the secu
 | `scaffold` | — | Generates a new CLI tool from template with security framework integration. |
 | `local-env` | `init`, `build`, `up`, `down`, `logs`, `status`, `validate` | Docker container management and validation. |
 | `health` | `check`, `components`, `security`, `usage`, `report` | 4-tier Nexus health monitoring (see below). |
-| `journal` | `session-start`, `session-end`, `log`, `status`, `diff`, `export`, `setup-hooks` | Cross-session project state tracking, git diff detection, HTML dashboard export, and git hook installation. |
+| `journal` | `status`, `log`, `diff`, `next`, `blocker`, `decision`, `health`, `blame`, `export`, `export-summary`, `setup-hooks`, `init-agents`, `session-start`, `session-end` | Cross-session project state tracking with auto-rolling sessions, daily rotation, drift detection, MADR ADRs, and cross-tool surface (AGENTS.md, Cursor rules). |
 | `supply-chain` | `scan`, `ioc`, `audit`, `advisories` | Detect compromised npm packages (axios backdoor), scan for malicious IOCs, and review security advisories. |
 
 ### Project Journal System (`journal` command)
@@ -180,13 +180,19 @@ Persistent cross-session project state tracking — tool-agnostic (works with Ca
 
 | Subcommand | What It Does |
 |---|---|
-| `session-start` | Stamps a new session, shows last state summary, offers `git init` if no repo found |
-| `session-end` | Auto-detects changed files (git diff or mtime fallback), prompts for summary + next tasks |
-| `log "<msg>"` | Appends a one-line event — Cascade calls this automatically after significant changes |
 | `status` | Displays current `.nexus/state.md` in the terminal |
-| `diff` | Shows files changed since session start |
-| `export` | Generates `.nexus/state-dashboard.html` — self-contained dark-mode HTML dashboard |
-| `setup-hooks` | Installs git `post-commit` (auto-log) + `pre-push` (auto-export) hooks |
+| `log "<msg>"` | Appends a one-line event; auto-rolls the session if stale (idle ≥4h, new UTC date, or branch changed). Also writes to `.nexus/journal/YYYY-MM/DD.md` (append-only daily archive) |
+| `diff` | Shows files changed since session start (git or mtime fallback) |
+| `next` | `add <task>` / `done <idx\|substr>` / `list` / `clear` — non-interactive task queue CRUD |
+| `blocker` | `add <text>` / `clear` / `list` — non-interactive blocker CRUD |
+| `decision` | `add "<title>"` creates a MADR-minimal ADR at `docs/decisions/NNNN-slug.md`; `list` enumerates existing ADRs |
+| `health` | Diagnoses drift: missing/stale/commit-drift/PRD-drift. Pass `refresh` to backfill missing commits and regenerate dashboards |
+| `blame <file>` | Cross-references a file across git log, state.done, and daily journal archive |
+| `export` | Regenerates `state-summary.md` (AI-optimized) + `state-dashboard.html` (self-contained dark-mode dashboard with git-derived heatmap) |
+| `export-summary` | Regenerates only `state-summary.md` (cheap, no HTML) |
+| `setup-hooks [--force]` | Installs/upgrades git `post-commit` + `pre-push` hooks (versioned; `--force` overwrites Nexus-installed hooks) |
+| `init-agents` | Idempotently installs `AGENTS.md` Nexus block + `.cursor/rules/state.mdc` for cross-tool agents |
+| `session-start` / `session-end` | **Optional** — sessions auto-roll. Use these only for explicit interactive session lifecycle |
 
 **State files written per project:**
 
@@ -197,15 +203,26 @@ Persistent cross-session project state tracking — tool-agnostic (works with Ca
 | `.nexus/state-dashboard.html` | Static self-contained dashboard | Open in browser |
 
 **Automatic tracking (after one-time setup):**
-- **On workspace open**: `.vscode/tasks.json` runs `session-start` silently via `runOn: folderOpen`
-- **On every `git commit`**: `post-commit` hook auto-logs the commit message to `.nexus/state.md`
+- **Sessions auto-roll** when stale (idle ≥4h, new UTC date, or branch changed) — `session-start` and `session-end` are optional, not required
+- **On every `git commit`**: `post-commit` hook auto-logs the commit message; the journal CLI auto-rolls the session if stale and regenerates `state-summary.md` + `state-dashboard.html`
 - **On every `git push`**: `pre-push` hook regenerates the dashboard
-- **After Cascade edits**: `01-project-state.md` rule instructs Cascade to call `journal log` after significant changes
+- **On `nexus init --upgrade`**: runs `journal health` and offers to backfill any commits not yet in the journal
+- **After AI agent edits**: `01-project-state.md` rule instructs Cascade / Claude Code / Cursor to call `journal log` after significant non-commit work (research, decisions)
 
 **One-time setup:**
 ```bash
-python nexus/cli/bs_cli.py journal session-start --project-dir .
 python nexus/cli/bs_cli.py journal setup-hooks --project-dir .
+python nexus/cli/bs_cli.py journal init-agents --project-dir .   # AGENTS.md + Cursor rule
+```
+
+**Daily use (all non-interactive, all idempotent):**
+```bash
+nexus journal status                     # current state
+nexus journal next add "<task>"          # queue work
+nexus journal blocker add "<text>"       # record a blocker
+nexus journal decision add "<title>"     # MADR ADR in docs/decisions/
+nexus journal health [refresh]           # check / fix drift vs git + PRD
+nexus journal blame <file>               # cross-ref file across journal + git
 ```
 
 ### Health Monitoring System (`health` command)
@@ -232,7 +249,7 @@ Nexus generates configuration files for 4 AI-powered IDEs:
 | `.github/copilot-instructions.md` | VS Code Copilot | Project context, coding standards, commands |
 | `CLAUDE.md` | Claude Code | Project constraints and commands |
 | `.cursorrules` | Cursor | Project context and development guidelines |
-| `.vscode/tasks.json` | VS Code / Windsurf | Auto-run `session-start` on workspace open; manual tasks for handoff, export, hooks |
+| `.vscode/tasks.json` | VS Code / Windsurf | Manual tasks for journal status, handoff, export, hooks (sessions auto-roll, no auto-start needed) |
 
 **Cross-Agent State Contract** (`AGENTS.md`): All AI agents (Cascade, Claude Code, Cursor) are instructed to read `.nexus/state.md` before starting work and to call `journal log` after completing significant changes — ensuring consistent project tracking regardless of which tool is active.
 
@@ -302,10 +319,16 @@ python nexus/cli/bs_cli.py health check --format human
 
 ### 5. Initialize Project Journal
 ```bash
-python nexus/cli/bs_cli.py journal session-start --project-dir .
 python nexus/cli/bs_cli.py journal setup-hooks --project-dir .
+python nexus/cli/bs_cli.py journal init-agents --project-dir .
 ```
-VS Code/Windsurf will prompt **"Allow automatic tasks?"** — click **Allow** once to enable auto session-start on workspace open.
+The first command installs git hooks (post-commit auto-logs every commit;
+pre-push regenerates the dashboard). The second creates `AGENTS.md`,
+`.cursor/rules/state.mdc`, and an initial `state-summary.md` so any AI tool
+can read project state on entry.
+
+Sessions auto-roll on every `journal log` when stale (idle ≥4h, new UTC date,
+or branch changed) — you do not need to run `session-start` manually.
 
 ### 6. Use Workflows
 ```bash
@@ -353,7 +376,7 @@ Nexus/
 │   ├── state.json                     # Machine-readable state
 │   └── state-dashboard.html           # Generated static dashboard
 ├── .vscode/
-│   └── tasks.json                     # Auto session-start + manual journal tasks
+│   └── tasks.json                     # Manual journal tasks (status, handoff, export, hooks)
 ├── .windsurf/
 │   ├── rules/
 │   │   ├── 00-token-efficiency.md     # Always-on: token saving discipline
@@ -377,7 +400,9 @@ Nexus/
 - **Add a workflow**: Create `.windsurf/workflows/<name>.md` with `description` in frontmatter
 - **Add a CLI tool**: Run `python nexus/cli/bs_cli.py scaffold <name>` — inherits security framework
 - **Add a rule**: Create `.windsurf/rules/<name>.md` with activation trigger in frontmatter
-- **Track project state**: Run `journal session-start` + `journal setup-hooks` in any project bootstrapped from Nexus
+- **Track project state**: Run `journal setup-hooks` + `journal init-agents` in any project bootstrapped from Nexus (sessions auto-roll, no manual `session-start` needed)
+- **Record a decision**: `journal decision add "<title>"` writes a MADR-minimal ADR to `docs/decisions/`
+- **Check journal freshness**: `journal health` flags drift; `journal health refresh` backfills missed commits
 
 ---
 

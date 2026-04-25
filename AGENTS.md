@@ -47,50 +47,74 @@ This is `Nexus`, a reusable bootstrap toolkit that generates project-specific AI
 ## CLI Toolkit Commands
 
 ```
-python nexus/cli/bs_cli.py prereqs          # Check prerequisites
-python nexus/cli/bs_cli.py smoketest         # Run smoke tests
-python nexus/cli/bs_cli.py debug logs <path> # Inspect logs
-python nexus/cli/bs_cli.py debug secrets-scan # Scan for leaked secrets
-python nexus/cli/bs_cli.py research docs <q> # Search docs
-python nexus/cli/bs_cli.py scrape page <url> # Scrape a page
-python nexus/cli/bs_cli.py local-env up      # Start containers
-python nexus/cli/bs_cli.py scaffold <name>   # Create new CLI tool
-python nexus/cli/bs_cli.py journal session-start  # Start session, show last state
-python nexus/cli/bs_cli.py journal log "<msg>"    # Log a change event
-python nexus/cli/bs_cli.py journal session-end    # Close session, capture changes
-python nexus/cli/bs_cli.py journal export         # Generate state-dashboard.html
-python nexus/cli/bs_cli.py journal status         # Show current project state
-python nexus/cli/bs_cli.py journal setup-hooks    # Install git hooks (post-commit auto-log, pre-push dashboard)
+python nexus/cli/bs_cli.py prereqs              # Check prerequisites
+python nexus/cli/bs_cli.py smoketest            # Run smoke tests
+python nexus/cli/bs_cli.py debug secrets-scan   # Scan for leaked secrets
+python nexus/cli/bs_cli.py research docs <q>    # Search docs
+python nexus/cli/bs_cli.py scaffold <name>      # Create new CLI tool
+python nexus/cli/bs_cli.py health check         # Nexus health check
+python -m pytest tests/                         # Run journal test suite
+
+# Journal (state, drift detection, ADRs, cross-tool surface)
+python nexus/cli/bs_cli.py journal status                # Show current state
+python nexus/cli/bs_cli.py journal log "<msg>"           # Log entry (auto-rolls stale sessions)
+python nexus/cli/bs_cli.py journal next add "<task>"     # Queue work
+python nexus/cli/bs_cli.py journal next done "<sub>"     # Mark queued task done
+python nexus/cli/bs_cli.py journal blocker add "<text>"  # Record a blocker
+python nexus/cli/bs_cli.py journal decision add "<t>"    # Create MADR ADR
+python nexus/cli/bs_cli.py journal health                # Diagnose drift
+python nexus/cli/bs_cli.py journal health refresh        # Auto-fix drift
+python nexus/cli/bs_cli.py journal blame <file>          # Cross-ref file
+python nexus/cli/bs_cli.py journal export                # Regen summary + dashboard
+python nexus/cli/bs_cli.py journal setup-hooks [--force] # Install/upgrade git hooks
 ```
 
 ## Project State (Cross-Agent Contract)
 
-All AI agents (Cascade, Claude Code, Cursor, or any future tool) MUST follow this protocol:
+All AI agents (Cascade, Claude Code, Cursor, Codex, or any future tool) MUST
+follow this protocol:
 
-1. **Before starting any multi-step task**: read `.nexus/state.md` if it exists.
+1. **Before starting any multi-step task**: read `.nexus/state-summary.md`
+   (AI-optimized, ≤200 lines). Fall back to `.nexus/state.md` for the full
+   journal if more detail is needed.
    - Respect "What's Done" — do not revert recently completed fixes.
    - Check "Blockers" before proceeding.
+   - Check "Active Now" / "What's Next" — these are the user-curated
+     priorities; do not silently expand scope past them.
 
-2. **After completing a significant change**: append a log entry:
+2. **After completing a significant change**: append a log entry. The
+   post-commit hook auto-logs every commit, so explicit logging is only
+   needed for non-commit work (research, decisions, planning):
    ```
    python nexus/cli/bs_cli.py journal log "<brief description>"
    ```
 
-3. **Starting a new work session**: run:
-   ```
-   python nexus/cli/bs_cli.py journal session-start --project-dir .
-   ```
+3. **Sessions auto-roll** when stale (idle ≥4h, new UTC date, or branch
+   changed). Manual `journal session-start` / `journal session-end` are
+   optional — the auto-roll path keeps `session_log` populated and
+   `session_number` current without ceremony.
 
-4. **Ending a work session**: run:
+4. **For non-trivial design decisions**, create a MADR ADR:
    ```
-   python nexus/cli/bs_cli.py journal session-end --project-dir .
-   python nexus/cli/bs_cli.py journal export --project-dir .
+   python nexus/cli/bs_cli.py journal decision add "<title>"
    ```
+   This writes a stub at `docs/decisions/NNNN-slug.md` and auto-logs the
+   decision creation to the journal.
 
 5. **State files** (tool-agnostic, plain text):
-   - `.nexus/state.md` — human + AI readable ground truth
-   - `.nexus/state.json` — machine-readable
-   - `.nexus/state-dashboard.html` — visual dashboard (static HTML)
+   - `.nexus/state-summary.md` — AI-optimized snapshot (read this first)
+   - `.nexus/state.md` — full journal grouped by Conventional Commits type
+   - `.nexus/state.json` — machine-readable state (rolling buffer of last 100 done)
+   - `.nexus/journal/YYYY-MM/DD.md` — append-only daily archive (system of record)
+   - `.nexus/state-dashboard.html` — visual dashboard
+   - `docs/decisions/NNNN-slug.md` — ADRs (committed by default)
+
+6. **If the journal looks stale or out of sync with reality**, run:
+   ```
+   python nexus/cli/bs_cli.py journal health refresh
+   ```
+   This backfills any commits not reflected in `done` and regenerates the
+   dashboards. `nexus init --upgrade` runs this automatically.
 
 ## Model Cost Reference (indicative)
 
