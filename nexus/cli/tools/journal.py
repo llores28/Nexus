@@ -46,6 +46,29 @@ def _find_git_root(start: Path) -> Optional[Path]:
     return None
 
 
+def _resolve_git_root(project_dir: Path) -> Optional[Path]:
+    """Find the most relevant git root for project_dir.
+
+    Strategy (handles nested repos where workspace root ≠ git root):
+    1. Walk upward from project_dir — covers the common case.
+    2. If not found, scan one level of subdirectories for a .git directory.
+       This catches projects like TextBlast/ that live inside a non-git workspace.
+    3. Return the upward result when both are found (it is always the correct
+       repo for project_dir itself).
+    """
+    upward = _find_git_root(project_dir)
+    if upward is not None:
+        return upward
+    # Scan immediate subdirectories for a nested git repo
+    try:
+        for sub in sorted(project_dir.iterdir()):
+            if sub.is_dir() and (sub / ".git").is_dir():
+                return sub
+    except (OSError, PermissionError):
+        pass
+    return None
+
+
 def _git_run(args: list[str], cwd: Path, timeout: int = 10) -> tuple[int, str, str]:
     """Run a git command safely. Returns (returncode, stdout, stderr)."""
     try:
@@ -308,7 +331,7 @@ def _cmd_session_start(project_dir: Path, output_format: str) -> None:
     import click
 
     state = _load_state(project_dir)
-    git_root = _find_git_root(project_dir)
+    git_root = _resolve_git_root(project_dir)
 
     if git_root is None:
         git_root = _offer_git_init(project_dir)
@@ -330,7 +353,7 @@ def _cmd_session_start(project_dir: Path, output_format: str) -> None:
 
     # Offer to install git hooks if a git repo exists but hooks are missing.
     # Human format only — non-interactive callers (json/yaml) skip the prompt.
-    if git_root and output_format == "human" and not _hooks_installed(git_root):
+    if git_root and output_format == "human" and not _hooks_installed(git_root) and git_root == _find_git_root(project_dir):
         if click.confirm(
             "\n  Auto-tracking hooks not installed. Install them now?\n"
             "  (post-commit logs every commit; pre-push regenerates the dashboard)",
@@ -379,8 +402,7 @@ def _cmd_session_end(project_dir: Path, output_format: str) -> None:
 
     state = _load_state(project_dir)
     session_n = state.get("session_number", 1)
-    git_root = _find_git_root(project_dir)
-
+    git_root = _resolve_git_root(project_dir)
     if git_root:
         diff_info = _git_diff_summary(git_root)
         changed_files = diff_info["changed_files"]
@@ -461,8 +483,9 @@ def _cmd_session_end(project_dir: Path, output_format: str) -> None:
     ), OutputFormat(output_format)) if output_format != "human" else None
 
 
-def _cmd_log(project_dir: Path, message: str, output_format: str) -> None:
+def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: bool = True) -> None:
     """Append a one-line log entry (non-interactive)."""
+    import os
     state = _load_state(project_dir)
 
     # Auto-bootstrap session 1 if no session has been started yet.
@@ -471,7 +494,7 @@ def _cmd_log(project_dir: Path, message: str, output_format: str) -> None:
     if state.get("session_number", 0) < 1:
         state["session_number"] = 1
         state["session_start_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        git_root = _find_git_root(project_dir)
+        git_root = _resolve_git_root(project_dir)
         if not git_root:
             state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
 
@@ -486,6 +509,14 @@ def _cmd_log(project_dir: Path, message: str, output_format: str) -> None:
         Status.PASS,
         message=f"Logged: {entry}",
     ), OutputFormat(output_format))
+
+    # Auto-export the dashboard so it never goes stale silently.
+    # Suppress with NEXUS_NO_AUTO_EXPORT=1 (e.g. in tight CI loops).
+    if auto_export and os.environ.get("NEXUS_NO_AUTO_EXPORT", "") not in ("1", "true", "yes"):
+        try:
+            _cmd_export(project_dir, "json")
+        except Exception:
+            pass
 
 
 def _cmd_status(project_dir: Path, output_format: str) -> None:
@@ -523,8 +554,7 @@ def _cmd_diff(project_dir: Path, output_format: str) -> None:
     import click
 
     state = _load_state(project_dir)
-    git_root = _find_git_root(project_dir)
-
+    git_root = _resolve_git_root(project_dir)
     if git_root:
         diff_info = _git_diff_summary(git_root)
         changed = diff_info["changed_files"]
@@ -558,7 +588,7 @@ def _cmd_export(project_dir: Path, output_format: str) -> None:
     from nexus.cli.tools.journal_dashboard import generate_dashboard
 
     state = _load_state(project_dir)
-    git_root = _find_git_root(project_dir)
+    git_root = _resolve_git_root(project_dir)
 
     git_commits = _git_log_recent(git_root, n=10) if git_root else []
     git_status = _git_status_short(git_root) if git_root else None
@@ -600,31 +630,64 @@ def _load_audit_log(project_dir: Path, last_n: int = 20) -> list[dict]:
         return []
 
 
-# --- Git hook templates ---
+# --- Git hook factories (paths baked at install-time) ---
 
-_POST_COMMIT_HOOK = """\
+def _make_post_commit_hook(bs_cli_path: str, project_dir: str) -> str:
+    """Return a post-commit hook script with absolute paths baked in.
+
+    Using baked-in absolute paths instead of deriving paths from
+    `git rev-parse --show-toplevel` fixes nested-repo scenarios where
+    the git root and the Nexus toolkit root are in different directories.
+    """
+    return f"""\
 #!/bin/sh
 # Nexus journal — auto-log on every git commit
-NEXUS_ROOT="$(git rev-parse --show-toplevel)"
-PYTHONIOENCODING=utf-8 python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal log "git commit: $(git log -1 --pretty=%s)" \\
-  --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
+PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal log "git commit: $(git log -1 --pretty=%s)" \\
+  --project-dir "{project_dir}" --format json > /dev/null 2>&1 || true
 """
 
-_PRE_PUSH_HOOK = """\
+
+def _make_pre_push_hook(bs_cli_path: str, project_dir: str) -> str:
+    """Return a pre-push hook script with absolute paths baked in."""
+    return f"""\
 #!/bin/sh
-# Nexus journal — export dashboard before every push
-NEXUS_ROOT="$(git rev-parse --show-toplevel)"
-PYTHONIOENCODING=utf-8 python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal export \\
-  --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
+# Nexus journal — regenerate dashboard before every push
+PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal export \\
+  --project-dir "{project_dir}" --format json > /dev/null 2>&1 || true
 """
+
+
+def _make_post_commit_hook_bat(bs_cli_path: str, project_dir: str) -> str:
+    """Windows .bat companion for post-commit (used when sh is unavailable)."""
+    return (
+        "@echo off\r\n"
+        "rem Nexus journal — auto-log on every git commit\r\n"
+        f'set PYTHONIOENCODING=utf-8\r\n'
+        f'for /f "tokens=*" %%m in (\'git log -1 --pretty=%%s\') do (\r\n'
+        f'  python "{bs_cli_path}" journal log "git commit: %%m" '
+        f'--project-dir "{project_dir}" --format json >nul 2>&1\r\n'
+        f')\r\n'
+    )
+
+
+def _make_pre_push_hook_bat(bs_cli_path: str, project_dir: str) -> str:
+    """Windows .bat companion for pre-push."""
+    return (
+        "@echo off\r\n"
+        "rem Nexus journal — regenerate dashboard before every push\r\n"
+        f'set PYTHONIOENCODING=utf-8\r\n'
+        f'python "{bs_cli_path}" journal export '
+        f'--project-dir "{project_dir}" --format json >nul 2>&1\r\n'
+    )
 
 
 def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
     """Install git hooks for automatic journal tracking."""
     import click
     import stat
+    import sys
 
-    git_root = _find_git_root(project_dir)
+    git_root = _resolve_git_root(project_dir)
     if git_root is None:
         emit(make_result(
             "journal-setup-hooks",
@@ -633,21 +696,32 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
         ), OutputFormat(output_format))
         return
 
+    # Bake absolute paths so hooks work regardless of where git_root is
+    # relative to the Nexus toolkit (critical for nested-repo setups).
+    bs_cli_path = str(Path(__file__).resolve().parent.parent / "bs_cli.py")
+    pd_str = str(project_dir.resolve())
+    # Forward slashes work in both sh and Windows Python paths inside strings.
+    bs_cli_posix = bs_cli_path.replace("\\", "/")
+    pd_posix = pd_str.replace("\\", "/")
+
     hooks_dir = git_root / ".git" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
     installed = []
     skipped = []
 
-    hooks = {
-        "post-commit": _POST_COMMIT_HOOK,
-        "pre-push": _PRE_PUSH_HOOK,
+    sh_hooks = {
+        "post-commit": _make_post_commit_hook(bs_cli_posix, pd_posix),
+        "pre-push": _make_pre_push_hook(bs_cli_posix, pd_posix),
     }
 
-    for hook_name, hook_content in hooks.items():
+    for hook_name, hook_content in sh_hooks.items():
         hook_path = hooks_dir / hook_name
         if hook_path.exists():
-            existing = hook_path.read_text(encoding="utf-8")
+            try:
+                existing = hook_path.read_text(encoding="utf-8")
+            except OSError:
+                existing = ""
             if "nexus" in existing.lower() or "bs_cli" in existing.lower():
                 skipped.append(f"{hook_name} (already installed)")
                 continue
@@ -661,8 +735,27 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
                     continue
 
         hook_path.write_text(hook_content, encoding="utf-8")
-        hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        try:
+            hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        except OSError:
+            pass
         installed.append(hook_name)
+
+    # Windows: write .bat companions so native git (not WSL) can fire hooks.
+    is_windows = sys.platform == "win32"
+    if is_windows:
+        bat_hooks = {
+            "post-commit.bat": _make_post_commit_hook_bat(bs_cli_path, pd_str),
+            "pre-push.bat": _make_pre_push_hook_bat(bs_cli_path, pd_str),
+        }
+        for bat_name, bat_content in bat_hooks.items():
+            bat_path = hooks_dir / bat_name
+            if not bat_path.exists():
+                try:
+                    bat_path.write_text(bat_content, encoding="utf-8")
+                    installed.append(bat_name)
+                except OSError:
+                    pass
 
     msg_parts = []
     if installed:
@@ -674,6 +767,8 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
 
     if output_format == "human":
         click.echo(f"\n  Git hooks path: {hooks_dir}")
+        click.echo(f"  bs_cli path  : {bs_cli_path}")
+        click.echo(f"  project-dir  : {pd_str}")
         for h in installed:
             click.echo(f"  [ok] {h}")
         for s in skipped:
@@ -681,19 +776,28 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
         click.echo()
         click.echo("  post-commit : auto-logs commit message to .nexus/state.md")
         click.echo("  pre-push    : regenerates state-dashboard.html before push")
+        if is_windows:
+            click.echo("  .bat files  : Windows-native git companions installed")
         click.echo()
 
     emit(make_result(
         "journal-setup-hooks",
         Status.PASS if installed else Status.WARN,
         message=message,
-        details={"hooks_dir": str(hooks_dir), "installed": installed, "skipped": skipped},
+        details={
+            "hooks_dir": str(hooks_dir),
+            "bs_cli_path": bs_cli_path,
+            "project_dir": pd_str,
+            "installed": installed,
+            "skipped": skipped,
+        },
     ), OutputFormat(output_format)) if output_format != "human" else None
 
 
 # --- CLI dispatcher ---
 
-def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str) -> None:
+def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str,
+                no_export: bool = False) -> None:
     """Dispatch journal subcommands."""
     pd = Path(project_dir).resolve()
 
@@ -706,7 +810,7 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         if not msg:
             emit(make_result("journal-log", Status.FAIL, message="Usage: journal log '<message>'"), OutputFormat(output_format))
             return
-        _cmd_log(pd, msg, output_format)
+        _cmd_log(pd, msg, output_format, auto_export=not no_export)
     elif subcommand == "status":
         _cmd_status(pd, output_format)
     elif subcommand == "diff":

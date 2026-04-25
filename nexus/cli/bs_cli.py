@@ -195,11 +195,14 @@ def init_cmd(ctx, output_format, upgrade, refresh, template, project_dir):
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
 @click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--no-export", "no_export", is_flag=True, default=False,
+              help="Skip auto-dashboard export after 'log' (useful in tight CI loops).")
 @click.pass_context
-def journal_cmd(ctx, subcommand, args, output_format, project_dir):
+def journal_cmd(ctx, subcommand, args, output_format, project_dir, no_export):
     """Project journal — cross-session state tracking, git diff, and dashboard export."""
     from nexus.cli.tools.journal import run_journal
-    run_journal(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
+    run_journal(subcommand=subcommand, args=args, output_format=output_format,
+                project_dir=project_dir, no_export=no_export)
 
 
 @cli.command("supply-chain")
