@@ -28,6 +28,27 @@ python nexus/cli/bs_cli.py --help
 | `bs_cli.py scrape <sub>` | Webscrape: page, api, links, docs crawl |
 | `bs_cli.py scaffold <name>` | Generate a new CLI tool from template |
 | `bs_cli.py local-env <sub>` | Docker container validation: init, build, up, down, validate |
+| `bs_cli.py health <sub>` | Nexus health monitoring: check, components, security, usage, report |
+| `bs_cli.py journal <sub>` | Cross-session state tracking with auto-rolling sessions, daily rotation, drift detection, MADR ADRs, and cross-tool surface (see `tools/journal.py`) |
+| `bs_cli.py supply-chain <sub>` | Detect compromised npm packages, system IOCs, run npm audit, review advisories |
+| `bs_cli.py init [--upgrade]` | Bootstrap or upgrade a project with Nexus (runs health + journal-health on upgrade) |
+
+### Journal subcommands (most-used)
+
+```
+journal status                   # current state
+journal log "<msg>"              # add entry (auto-rolls stale sessions)
+journal next add "<task>"        # queue work
+journal blocker add "<text>"     # record a blocker
+journal decision add "<title>"   # MADR ADR in docs/decisions/
+journal health [refresh]         # detect / fix drift vs git + PRD
+journal blame <file>             # cross-reference file in git + journal
+journal export                   # regen state-summary.md + dashboard
+journal setup-hooks [--force]    # install/upgrade git hooks (post-commit + pre-push)
+journal init-agents              # install AGENTS.md block + .cursor/rules/state.mdc
+```
+
+Test suite: `python -m pytest tests/` (51 cases, ~0.7s)
 
 ## Exit Codes
 

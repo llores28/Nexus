@@ -865,8 +865,8 @@
                             <span class="feature-title">Project Journal</span>
                             <span class="badge badge-works">Works</span>
                         </div>
-                        <div class="feature-desc">Cross-session state tracking with git diff, auto hooks, and HTML dashboard</div>
-                        <div class="feature-example">bs_cli.py journal session-start</div>
+                        <div class="feature-desc">Auto-rolling sessions, drift detection, MADR ADRs, daily archive, AI-optimized summary, cross-tool surface</div>
+                        <div class="feature-example">bs_cli.py journal status</div>
                     </div>
                     
                     <div class="feature-card">
@@ -931,28 +931,28 @@
             
             <div class="authority-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px;">
                 <div class="authority-card" style="text-align:center;">
-                    <div class="authority-icon">🖥️</div>
-                    <div class="authority-title">VS Code Task</div>
-                    <div class="authority-role">On Workspace Open</div>
-                    <div class="authority-desc">runOn: folderOpen → session-start fires silently every time you open the project</div>
+                    <div class="authority-icon">🔄</div>
+                    <div class="authority-title">Auto-Rolling Sessions</div>
+                    <div class="authority-role">On Every journal log</div>
+                    <div class="authority-desc">Stale session (idle ≥4h, new UTC date, branch changed) auto-closes and a new one opens — no manual session-start/end</div>
                 </div>
                 <div class="authority-card" style="text-align:center;">
                     <div class="authority-icon">🔨</div>
                     <div class="authority-title">post-commit Hook</div>
                     <div class="authority-role">On Every git commit</div>
-                    <div class="authority-desc">Auto-appends commit message to .nexus/state.md — zero friction tracking</div>
+                    <div class="authority-desc">Auto-logs commit subject; auto-rolls if stale; regenerates state-summary.md + state-dashboard.html on every commit</div>
                 </div>
                 <div class="authority-card" style="text-align:center;">
                     <div class="authority-icon">🚀</div>
                     <div class="authority-title">pre-push Hook</div>
                     <div class="authority-role">On Every git push</div>
-                    <div class="authority-desc">Regenerates state-dashboard.html before code leaves your machine</div>
+                    <div class="authority-desc">Regenerates state-dashboard.html + state-summary.md before code leaves your machine</div>
                 </div>
                 <div class="authority-card" style="text-align:center;">
-                    <div class="authority-icon">🤖</div>
-                    <div class="authority-title">Cascade Rule</div>
-                    <div class="authority-role">After Each Edit</div>
-                    <div class="authority-desc">01-project-state.md instructs Cascade to call journal log after significant changes</div>
+                    <div class="authority-icon">🩺</div>
+                    <div class="authority-title">Drift Detection</div>
+                    <div class="authority-role">On nexus init --upgrade</div>
+                    <div class="authority-desc">journal health flags missing/stale/drift; refresh backfills any commits not yet captured by the journal</div>
                 </div>
             </div>
             
@@ -961,46 +961,65 @@
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">1</div>
                     <div class="step-content">
                         <div class="step-title">One-time setup per project</div>
-                        <div class="step-desc"><code>journal session-start</code> → <code>journal setup-hooks</code> → VS Code prompts Allow auto tasks</div>
+                        <div class="step-desc"><code>journal setup-hooks</code> → <code>journal init-agents</code> (creates AGENTS.md block + .cursor/rules/state.mdc + initial state-summary.md)</div>
                     </div>
                 </div>
                 <div class="model-step">
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">2</div>
                     <div class="step-content">
-                        <div class="step-title">State written to .nexus/state.md</div>
-                        <div class="step-desc">Plain Markdown — readable by Cascade (Windsurf indexed), Claude Code, Cursor, or any agent that reads project files</div>
+                        <div class="step-title">State auto-tracked across files</div>
+                        <div class="step-desc">Every commit triggers post-commit hook → journal log → auto-roll (if stale) → daily archive append → state.md (CC-grouped) → state-summary.md (AI-optimized) → state-dashboard.html (git-derived heatmap)</div>
                     </div>
                 </div>
                 <div class="model-step">
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">3</div>
                     <div class="step-content">
-                        <div class="step-title">Cascade reads state before every edit</div>
-                        <div class="step-desc">Rule 01-project-state.md (always_on) tells Cascade: check What's Done — do NOT revert recent fixes</div>
-                        <div class="step-status"><span class="badge badge-works">Regression guard</span></div>
+                        <div class="step-title">Any AI agent reads state on entry</div>
+                        <div class="step-desc">AGENTS.md (Codex/Cursor/Aider/Windsurf), CLAUDE.md (Claude Code), .cursor/rules/state.mdc (Cursor), .windsurf/rules/01-project-state.md (Cascade) all point at .nexus/state-summary.md as the canonical AI-first read</div>
+                        <div class="step-status"><span class="badge badge-works">Cross-tool surface</span></div>
                     </div>
                 </div>
                 <div class="model-step">
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">4</div>
                     <div class="step-content">
-                        <div class="step-title">Session close via /session-handoff</div>
-                        <div class="step-desc">diff → session-end (prompts summary + next tasks) → export dashboard HTML → handoff block for next session</div>
-                        <div class="step-status"><span class="badge badge-works">Works</span></div>
+                        <div class="step-title">Drift detection on upgrade</div>
+                        <div class="step-desc"><code>nexus init --upgrade</code> runs <code>journal health</code>: detects commits missing from done, stale state, or PRD newer than last journal update. Auto-refresh backfills missing commits into done + daily archive (tagged [backfill])</div>
+                        <div class="step-status"><span class="badge badge-works">Self-healing</span></div>
+                    </div>
+                </div>
+                <div class="model-step">
+                    <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">5</div>
+                    <div class="step-content">
+                        <div class="step-title">Decisions captured as ADRs</div>
+                        <div class="step-desc"><code>journal decision add "&lt;title&gt;"</code> writes a MADR-minimal stub at <code>docs/decisions/NNNN-slug.md</code> (committed by default, not under .nexus/) and auto-logs the creation</div>
                     </div>
                 </div>
             </div>
             
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px;">
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #a78bfa; font-weight: 700; margin-bottom: 8px;">🤖 .nexus/state-summary.md</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">AI-optimized snapshot (~200 lines). Status, Active Now, Blockers, Recent Work (CC-grouped), Most-Changed Files, Recent Commits. <strong>Read this first.</strong></div>
+                </div>
                 <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
                     <div style="color: #4ade80; font-weight: 700; margin-bottom: 8px;">📄 .nexus/state.md</div>
-                    <div style="color: #94a3b8; font-size: 0.85rem;">Human + AI readable. Indexed by Windsurf. Contains: Status, What's Done, What's Next, Blockers, Session Log.</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Full journal grouped by Conventional Commits type (Features / Fixes / Refactoring / Docs / ...). Branch tag on every entry.</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
                     <div style="color: #60a5fa; font-weight: 700; margin-bottom: 8px;">⚙️ .nexus/state.json</div>
-                    <div style="color: #94a3b8; font-size: 0.85rem;">Machine-readable source for dashboard. Excluded from Windsurf indexing to save tokens.</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Machine-readable rolling buffer (last 100 done entries). Source of truth for dashboards; daily archive is the permanent record.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #fbbf24; font-weight: 700; margin-bottom: 8px;">🗓️ .nexus/journal/YYYY-MM/DD.md</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Append-only daily archive — the system of record. Survives state.json corruption, branch resets, and the rolling-buffer trim.</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
                     <div style="color: #fb923c; font-weight: 700; margin-bottom: 8px;">📊 state-dashboard.html</div>
-                    <div style="color: #94a3b8; font-size: 0.85rem;">Self-contained dark-mode HTML. Status cards, session timeline, file heatmap, git log, audit trail. No server needed.</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Self-contained dark-mode HTML. Status cards, session timeline, git-derived heatmap, recent commits, audit trail. No server needed.</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
+                    <div style="color: #f87171; font-weight: 700; margin-bottom: 8px;">📜 docs/decisions/NNNN-slug.md</div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">MADR-minimal architectural decision records. Committed by default (not under .nexus/), so they travel with the code in version control.</div>
                 </div>
             </div>
         </div>
