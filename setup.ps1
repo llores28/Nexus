@@ -2,6 +2,12 @@
 #
 # Usage:
 #   irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex
+#   NOTE: 'irm ... | iex' does NOT support -UpgradeOnly / -Refresh flags.
+#   For flags, save the script first: irm ... -OutFile setup.ps1; .\setup.ps1 -UpgradeOnly
+#
+#   If blocked by execution policy, run once:
+#   Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+#
 #   # or, from a local clone:
 #   .\setup.ps1                  # fresh init OR safe upgrade (auto-detected)
 #   .\setup.ps1 -UpgradeOnly     # just refresh the Nexus package; skip nexus init
@@ -55,6 +61,13 @@ if (-not $py) {
 $pyVersion = & $py --version
 Write-Host "   using: $py ($pyVersion)"
 
+# --- 1b. Check git (required for pip install git+...) ---
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Err "git not found. Install from https://git-scm.com/ and re-run."
+    exit 1
+}
+Write-Host "   git: $(git --version)"
+
 # --- 2. Detect mode: local-clone vs target-project ---
 $mode = "target"
 $pyprojectPath = Join-Path $ProjectDir "pyproject.toml"
@@ -87,9 +100,15 @@ if (-not (Test-Path $activate)) {
 }
 & $activate
 
+# Pin to the venv's own python.exe so all subsequent calls use the correct interpreter
+$venvPy = Join-Path $venv "Scripts\python.exe"
+if (-not (Test-Path $venvPy)) {
+    $venvPy = Join-Path $venv "bin\python"
+}
+
 # --- 4. Detect prior Nexus install (informational) ---
 $priorVersion = ""
-$pipShow = & python -m pip show nexus-bootstrap 2>$null
+$pipShow = & $venvPy -m pip show nexus-bootstrap 2>$null
 if ($LASTEXITCODE -eq 0 -and $pipShow) {
     $line = $pipShow | Select-String -Pattern '^Version:'
     if ($line) {
@@ -102,7 +121,7 @@ if ($LASTEXITCODE -eq 0 -and $pipShow) {
 
 # --- 5. Install / upgrade Nexus ---
 Info "Upgrading pip"
-& python -m pip install --quiet --upgrade pip
+& $venvPy -m pip install --quiet --upgrade pip
 
 if ($mode -eq "clone") {
     if ($priorVersion) {
@@ -110,18 +129,18 @@ if ($mode -eq "clone") {
     } else {
         Info "Installing Nexus (editable) from local clone"
     }
-    & python -m pip install --quiet -e .
+    & $venvPy -m pip install --quiet -e .
 } else {
     if ($priorVersion) {
         Info "Upgrading Nexus from $NexusRepo"
     } else {
         Info "Installing Nexus from $NexusRepo"
     }
-    & python -m pip install --quiet --upgrade "git+$NexusRepo"
+    & $venvPy -m pip install --quiet --upgrade "git+$NexusRepo"
 }
 if ($LASTEXITCODE -ne 0) { Err "pip install failed"; exit 1 }
 
-$pipShow2 = & python -m pip show nexus-bootstrap 2>$null
+$pipShow2 = & $venvPy -m pip show nexus-bootstrap 2>$null
 $newVersion = ""
 if ($pipShow2) {
     $line = $pipShow2 | Select-String -Pattern '^Version:'
