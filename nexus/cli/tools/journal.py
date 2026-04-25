@@ -1731,6 +1731,258 @@ def _cmd_decision(project_dir: Path, args: tuple, output_format: str) -> None:
              OutputFormat(output_format))
 
 
+# --- Phase 5: Health check (drift detection + auto-refresh) ---
+
+# Files at the project root that count as a PRD for staleness checks.
+PRD_CANDIDATE_NAMES = ("PRD.md", "prd.md", "ROADMAP.md", "REQUIREMENTS.md")
+HEALTH_STALE_DAYS = 14  # last_updated older than this triggers 'stale'
+
+
+def _find_prd(project_dir: Path) -> Optional[Path]:
+    """Return the first PRD-like file found at the project root."""
+    for name in PRD_CANDIDATE_NAMES:
+        p = project_dir / name
+        if p.exists() and p.is_file():
+            return p
+    return None
+
+
+def _commits_not_in_done(state: dict[str, Any], git_root: Path,
+                         since_iso: Optional[str]) -> list[dict]:
+    """Return commits since `since_iso` whose subject is NOT already in state.done.
+
+    A commit is considered captured if any done entry contains its subject —
+    matches both `git commit: <subject>` (hook-driven) and free-form entries
+    that happen to mention the subject. since_iso=None scans last 50 commits.
+    """
+    if since_iso:
+        args = ["log", f"--since={since_iso}", "--pretty=format:%H|%aI|%s"]
+    else:
+        args = ["log", "-50", "--pretty=format:%H|%aI|%s"]
+    rc, out, _ = _git_run(args, git_root)
+    if rc != 0 or not out:
+        return []
+
+    done_blob = "\n".join(state.get("done", []))
+    missing: list[dict] = []
+    for line in out.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            continue
+        sha, iso_date, subject = parts
+        if subject.strip() and subject not in done_blob:
+            missing.append({
+                "hash": sha[:8],
+                "full_hash": sha,
+                "iso_date": iso_date,
+                "subject": subject,
+            })
+    # Oldest first so backfill order matches commit order.
+    return list(reversed(missing))
+
+
+def _diagnose_journal(project_dir: Path) -> dict[str, Any]:
+    """Run drift detection. Returns a structured diagnosis (no side effects).
+
+    Status hierarchy: missing > stale > drift > ok. PRD timestamp is a
+    standalone advisory field — it does not change the top-level status.
+    """
+    state_path = project_dir / STATE_JSON
+    issues: list[str] = []
+    diagnosis: dict[str, Any] = {
+        "status": "ok",
+        "issues": issues,
+        "missing_commits": [],
+        "prd": None,
+        "stats": {},
+    }
+
+    if not state_path.exists():
+        diagnosis["status"] = "missing"
+        issues.append("No .nexus/state.json found.")
+        return diagnosis
+
+    state = _load_state(project_dir)
+    last_updated = _parse_iso(state.get("last_updated"))
+    session_start = _parse_iso(state.get("session_start_time"))
+    done_count = len(state.get("done", []))
+    now = datetime.now(timezone.utc)
+
+    diagnosis["stats"] = {
+        "session": state.get("session_number", 0),
+        "session_branch": state.get("session_branch"),
+        "done_count": done_count,
+        "next_count": len(state.get("next", [])),
+        "blockers": len(state.get("blockers", [])),
+        "last_updated": state.get("last_updated"),
+    }
+
+    # Stale: too old, OR session was closed but work has accumulated since.
+    if last_updated is not None:
+        days_idle = (now - last_updated).total_seconds() / 86400.0
+        diagnosis["stats"]["days_since_update"] = round(days_idle, 1)
+        if days_idle >= HEALTH_STALE_DAYS:
+            diagnosis["status"] = "stale"
+            issues.append(f"last_updated is {days_idle:.1f} days old (threshold {HEALTH_STALE_DAYS}).")
+    if session_start is None and done_count > 0:
+        diagnosis["status"] = "stale" if diagnosis["status"] == "ok" else diagnosis["status"]
+        issues.append("session_start_time is null but done has entries — session was closed and never reopened.")
+
+    # Commit drift: git activity not reflected in state.done.
+    git_root = _resolve_git_root(project_dir)
+    if git_root:
+        # Use last_updated as the comparison floor — anything after that should
+        # have a journal entry. If the session is still open, also fall back to
+        # session_start_time (whichever is older gives more headroom).
+        floor_iso = state.get("last_updated") or state.get("session_start_time")
+        missing = _commits_not_in_done(state, git_root, floor_iso)
+        diagnosis["missing_commits"] = missing
+        if missing:
+            if diagnosis["status"] == "ok":
+                diagnosis["status"] = "drift"
+            issues.append(f"{len(missing)} commit(s) since last update are not reflected in done.")
+
+    # PRD timestamp advisory.
+    prd_path = _find_prd(project_dir)
+    if prd_path is not None:
+        try:
+            prd_mtime = datetime.fromtimestamp(prd_path.stat().st_mtime, tz=timezone.utc)
+            prd_info = {
+                "path": str(prd_path.relative_to(project_dir)),
+                "modified": prd_mtime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "newer_than_journal": last_updated is not None and prd_mtime > last_updated,
+            }
+            diagnosis["prd"] = prd_info
+            if prd_info["newer_than_journal"]:
+                issues.append(
+                    f"PRD ({prd_info['path']}) was edited after last journal update — "
+                    "verify the journal reflects the current plan."
+                )
+        except OSError:
+            pass
+
+    return diagnosis
+
+
+def _backfill_commits(project_dir: Path, state: dict[str, Any],
+                      missing: list[dict]) -> int:
+    """Append missing commits into state.done + daily journal files (tagged [backfill]).
+
+    Each entry is written to the daily file matching the commit's authored date,
+    not today's date — so the daily archive matches the actual history.
+    Returns the number of entries written.
+    """
+    if not missing:
+        return 0
+    branch = state.get("session_branch")
+    # Auto-bootstrap session if needed so backfilled entries have a valid Sn tag.
+    if state.get("session_number", 0) < 1 or state.get("session_start_time") is None:
+        git_root = _resolve_git_root(project_dir)
+        _open_session(state, git_root, project_dir)
+    session_n = state["session_number"]
+
+    written = 0
+    for c in missing:
+        # Parse the commit's authored date back to a datetime so the daily
+        # file goes under the correct YYYY-MM/DD.md.
+        try:
+            commit_dt = datetime.fromisoformat(c["iso_date"].replace("Z", "+00:00"))
+        except (ValueError, KeyError):
+            commit_dt = datetime.now(timezone.utc)
+        date_short = commit_dt.strftime("%Y-%m-%d")
+        branch_tag = f" {branch}" if branch else ""
+        message = f"[backfill] git commit: {c['subject']}"
+        state["done"].append(f"[{date_short} S{session_n}{branch_tag}] {message}")
+        _append_daily_journal(project_dir, message, branch, session_n, commit_dt)
+        written += 1
+    return written
+
+
+def _cmd_health(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Check journal freshness vs git/PRD; optionally auto-refresh.
+
+    journal health             diagnose only (read-only)
+    journal health --refresh   diagnose and auto-fix drift
+    journal health refresh     same as --refresh (positional form)
+    """
+    refresh = "--refresh" in args or (args and args[0] == "refresh")
+    diagnosis = _diagnose_journal(project_dir)
+
+    actions: list[str] = []
+    backfilled = 0
+    if refresh and diagnosis["status"] in ("drift", "stale", "missing"):
+        if diagnosis["status"] == "missing":
+            # Bootstrap fresh state by opening session 1.
+            state = _load_state(project_dir)
+            git_root = _resolve_git_root(project_dir)
+            _open_session(state, git_root, project_dir)
+            _save_state(project_dir, state)
+            actions.append("created fresh state.json + opened session 1")
+            # Now re-diagnose so we pick up commit drift after bootstrap.
+            diagnosis = _diagnose_journal(project_dir)
+
+        state = _load_state(project_dir)
+        backfilled = _backfill_commits(project_dir, state, diagnosis.get("missing_commits", []))
+        if backfilled:
+            actions.append(f"backfilled {backfilled} commit(s) into done + daily files")
+        # Regenerate dashboard + summary either way (catches stale-but-no-drift case).
+        try:
+            _cmd_export(project_dir, "json")
+            actions.append("regenerated state-summary.md + state-dashboard.html")
+        except Exception as e:
+            actions.append(f"export failed: {e}")
+        # Re-diagnose to report final status.
+        diagnosis_after = _diagnose_journal(project_dir)
+        diagnosis["status_after_refresh"] = diagnosis_after["status"]
+        diagnosis["issues_after_refresh"] = diagnosis_after["issues"]
+
+    status_to_result = {
+        "ok": Status.PASS,
+        "drift": Status.WARN,
+        "stale": Status.WARN,
+        "missing": Status.FAIL,
+    }
+    result_status = status_to_result.get(diagnosis["status"], Status.WARN)
+    if refresh and diagnosis.get("status_after_refresh") == "ok":
+        result_status = Status.PASS
+
+    msg_parts = [f"journal health: {diagnosis['status']}"]
+    if diagnosis["issues"]:
+        msg_parts.append(f"{len(diagnosis['issues'])} issue(s)")
+    if actions:
+        msg_parts.append(f"actions: {'; '.join(actions)}")
+    message = " — ".join(msg_parts)
+
+    if output_format == "human":
+        import click
+        click.echo(f"\n  {message}")
+        for issue in diagnosis["issues"]:
+            click.echo(f"    - {issue}")
+        if diagnosis.get("missing_commits"):
+            click.echo("\n  Missing commits:")
+            for c in diagnosis["missing_commits"][:10]:
+                click.echo(f"    {c['hash']} {c['iso_date'][:10]} — {c['subject'][:70]}")
+            if len(diagnosis["missing_commits"]) > 10:
+                click.echo(f"    ... and {len(diagnosis['missing_commits']) - 10} more")
+        if actions:
+            click.echo("\n  Actions taken:")
+            for a in actions:
+                click.echo(f"    + {a}")
+        click.echo()
+
+    emit(make_result(
+        "journal-health",
+        result_status,
+        message=message,
+        details={
+            **diagnosis,
+            "refreshed": refresh,
+            "actions": actions,
+            "backfilled": backfilled,
+        },
+    ), OutputFormat(output_format)) if output_format != "human" else None
+
+
 # --- Phase 4: Blame (cross-reference a file across journal + git) ---
 
 def _cmd_blame(project_dir: Path, args: tuple, output_format: str) -> None:
@@ -1844,6 +2096,8 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         _cmd_decision(pd, args, output_format)
     elif subcommand == "blame":
         _cmd_blame(pd, args, output_format)
+    elif subcommand == "health":
+        _cmd_health(pd, args, output_format)
     else:
         emit(make_result(
             "journal",

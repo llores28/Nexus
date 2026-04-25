@@ -11,12 +11,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from nexus.cli.tools.journal import (
+    HEALTH_STALE_DAYS,
     HOOK_VERSION,
     MAX_DONE_KEEP,
     NEXUS_AGENTS_BEGIN,
     NEXUS_AGENTS_END,
     _append_daily_journal,
+    _backfill_commits,
     _classify_done_item,
+    _diagnose_journal,
     _group_done_by_type,
     _hook_status,
     _load_state,
@@ -368,6 +371,88 @@ class TestRunJournal:
         # Daily file written
         daily = list((tmp_path / ".nexus" / "journal").rglob("*.md"))
         assert daily and "hello world" in daily[0].read_text(encoding="utf-8")
+
+    def test_health_missing_when_no_state(self, tmp_path):
+        d = _diagnose_journal(tmp_path)
+        assert d["status"] == "missing"
+        assert d["issues"]
+
+    def test_health_ok_after_log(self, tmp_path):
+        run_journal("log", ("first entry",), "json", str(tmp_path), no_export=True)
+        d = _diagnose_journal(tmp_path)
+        # No git in tmp_path so commit drift can't surface; status should be ok.
+        assert d["status"] == "ok"
+        assert d["issues"] == []
+
+    def test_health_stale_after_long_idle(self, tmp_path):
+        run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
+        # Forge an old last_updated to simulate age.
+        state = _load_state(tmp_path)
+        old = (datetime.now(timezone.utc) - timedelta(days=HEALTH_STALE_DAYS + 5))
+        state["last_updated"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _save_state(tmp_path, state)
+        # _save_state overwrites last_updated, so write the JSON directly.
+        import json as _json
+        path = tmp_path / ".nexus" / "state.json"
+        raw = _json.loads(path.read_text(encoding="utf-8"))
+        raw["last_updated"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
+        path.write_text(_json.dumps(raw), encoding="utf-8")
+
+        d = _diagnose_journal(tmp_path)
+        assert d["status"] == "stale"
+        assert any("last_updated" in i for i in d["issues"])
+
+    def test_backfill_appends_done_and_daily(self, tmp_path):
+        run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
+        state = _load_state(tmp_path)
+        before_done = len(state["done"])
+        missing = [
+            {"hash": "abc12345", "iso_date": "2026-04-25T10:00:00+00:00",
+             "subject": "fix: synthetic commit", "full_hash": "abc12345..."},
+            {"hash": "def67890", "iso_date": "2026-04-25T11:00:00+00:00",
+             "subject": "feat: another", "full_hash": "def67890..."},
+        ]
+        written = _backfill_commits(tmp_path, state, missing)
+        _save_state(tmp_path, state)
+        assert written == 2
+        reloaded = _load_state(tmp_path)
+        assert len(reloaded["done"]) == before_done + 2
+        assert any("[backfill]" in d for d in reloaded["done"])
+        # Daily file at the commit's date should have the entries.
+        daily = tmp_path / ".nexus" / "journal" / "2026-04" / "25.md"
+        assert daily.exists()
+        content = daily.read_text(encoding="utf-8")
+        assert "fix: synthetic commit" in content
+        assert "feat: another" in content
+
+    def test_health_refresh_idempotent_on_clean_state(self, tmp_path, capsys):
+        run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
+        capsys.readouterr()
+        run_journal("health", ("refresh",), "json", str(tmp_path))
+        # Run twice; second call should be ok (no double-backfill).
+        run_journal("health", ("refresh",), "json", str(tmp_path))
+        out = capsys.readouterr().out
+        # Final status should be ok, and we should not see a non-zero backfill
+        # in the second invocation.
+        # Look at the LAST emitted JSON document.
+        import json as _json
+        decoder = _json.JSONDecoder()
+        docs = []
+        idx = 0
+        while idx < len(out):
+            stripped = out[idx:].lstrip()
+            if not stripped:
+                break
+            offset = len(out[idx:]) - len(stripped)
+            try:
+                doc, end = decoder.raw_decode(stripped)
+            except _json.JSONDecodeError:
+                break
+            docs.append(doc)
+            idx += offset + end
+        assert docs, "expected at least one JSON document from health refresh"
+        last = docs[-1]
+        assert last["details"]["backfilled"] == 0
 
     def test_blame_finds_done_and_daily_mentions(self, tmp_path, capsys):
         run_journal("log", ("touched src/foo.py",), "json", str(tmp_path), no_export=True)

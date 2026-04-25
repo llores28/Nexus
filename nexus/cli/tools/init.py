@@ -221,6 +221,37 @@ def run_init(
     from nexus.cli.tools.health import run_health
     run_health(subcommand="check", output_format="human", project_dir=str(pd))
 
+    # Journal staleness/drift check. On upgrade we offer to auto-refresh;
+    # on fresh setups state.json doesn't exist yet so this is a quick "missing"
+    # diagnosis that the user can ignore (init will create state via journal usage).
+    if is_upgrade:
+        click.echo("\n  Checking journal freshness...")
+        from nexus.cli.tools.journal import _diagnose_journal, run_journal
+        diagnosis = _diagnose_journal(pd)
+        click.echo(f"    journal status: {diagnosis['status']}")
+        for issue in diagnosis["issues"]:
+            click.echo(f"      - {issue}")
+        if diagnosis["status"] in ("drift", "stale", "missing"):
+            if output_format == "human":
+                if click.confirm(
+                    "\n  Auto-refresh the journal now? "
+                    "(backfill missing commits, regenerate dashboards)",
+                    default=True,
+                ):
+                    run_journal(
+                        subcommand="health",
+                        args=("refresh",),
+                        output_format="human",
+                        project_dir=str(pd),
+                    )
+                else:
+                    click.echo("    Skipped. Run `nexus journal health refresh` later.")
+            else:
+                click.echo(
+                    "    (non-interactive mode — run `nexus journal health refresh` "
+                    "to backfill)"
+                )
+
     click.echo("\n" + "=" * 60)
     click.echo(f"  Nexus init complete ({'upgrade' if is_upgrade else 'fresh setup'}).")
     click.echo("=" * 60)
