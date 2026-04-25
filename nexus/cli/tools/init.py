@@ -225,8 +225,25 @@ def run_init(
     # on fresh setups state.json doesn't exist yet so this is a quick "missing"
     # diagnosis that the user can ignore (init will create state via journal usage).
     if is_upgrade:
+        # Hook upgrade first: if a downstream project predates Phase 1, its
+        # post-commit hook may be a v1 template (no stderr capture, no baked
+        # paths). setup-hooks is idempotent — current v2 hooks are skipped,
+        # old ones get upgraded in place. Doing this BEFORE the journal
+        # freshness check is intentional: broken hooks are often the root
+        # cause of any drift that follows.
+        from nexus.cli.tools.journal import _hooks_installed, _resolve_git_root, run_journal
+        git_root = _resolve_git_root(pd)
+        if git_root is not None and not _hooks_installed(git_root):
+            click.echo("\n  Upgrading journal git hooks...")
+            run_journal(
+                subcommand="setup-hooks",
+                args=(),
+                output_format="human",
+                project_dir=str(pd),
+            )
+
         click.echo("\n  Checking journal freshness...")
-        from nexus.cli.tools.journal import _diagnose_journal, run_journal
+        from nexus.cli.tools.journal import _diagnose_journal
         diagnosis = _diagnose_journal(pd)
         click.echo(f"    journal status: {diagnosis['status']}")
         for issue in diagnosis["issues"]:
