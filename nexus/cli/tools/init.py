@@ -248,6 +248,7 @@ def run_init(
         click.echo(f"    journal status: {diagnosis['status']}")
         for issue in diagnosis["issues"]:
             click.echo(f"      - {issue}")
+        refreshed = False
         if diagnosis["status"] in ("drift", "stale", "missing"):
             if output_format == "human":
                 if click.confirm(
@@ -261,6 +262,7 @@ def run_init(
                         output_format="human",
                         project_dir=str(pd),
                     )
+                    refreshed = True
                 else:
                     click.echo("    Skipped. Run `nexus journal health refresh` later.")
             else:
@@ -268,6 +270,26 @@ def run_init(
                     "    (non-interactive mode — run `nexus journal health refresh` "
                     "to backfill)"
                 )
+
+        # Always regenerate the dashboard + state-summary.md, even when status
+        # was "ok" or the user declined refresh. Catches the gap where a freshly
+        # upgraded project has clean status but no dashboard yet — the cost is
+        # one cheap export call, the benefit is users always seeing a current
+        # dashboard after any upgrade. Skipped if refresh already ran (it
+        # exports as a side effect). JSON output is captured to keep init's
+        # human output clean.
+        if not refreshed:
+            click.echo("\n  Regenerating dashboard + state-summary.md...")
+            import contextlib
+            import io
+            from nexus.cli.tools.journal import _cmd_export
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    _cmd_export(pd, "json")
+                click.echo("    [ok] .nexus/state-dashboard.html and .nexus/state-summary.md")
+            except Exception as e:
+                click.echo(f"    [warn] dashboard regeneration failed: {e}")
 
     click.echo("\n" + "=" * 60)
     click.echo(f"  Nexus init complete ({'upgrade' if is_upgrade else 'fresh setup'}).")

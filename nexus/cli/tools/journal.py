@@ -1829,18 +1829,24 @@ def _diagnose_journal(project_dir: Path) -> dict[str, Any]:
         issues.append("session_start_time is null but done has entries — session was closed and never reopened.")
 
     # Commit drift: git activity not reflected in state.done.
+    #
+    # Scan the last 50 commits regardless of last_updated. Using last_updated
+    # as a floor was wrong: when state.json was just freshly created/saved
+    # (e.g. by `_persist_tier` during init), last_updated is "now" and any
+    # since-floor scan returns zero — falsely reporting "ok" while done is
+    # empty. The post-commit hook covers active projects; this scan covers
+    # the "first upgrade of a pre-Phase-1 project" case where the entire
+    # history needs to be considered.
     git_root = _resolve_git_root(project_dir)
     if git_root:
-        # Use last_updated as the comparison floor — anything after that should
-        # have a journal entry. If the session is still open, also fall back to
-        # session_start_time (whichever is older gives more headroom).
-        floor_iso = state.get("last_updated") or state.get("session_start_time")
-        missing = _commits_not_in_done(state, git_root, floor_iso)
+        missing = _commits_not_in_done(state, git_root, since_iso=None)
         diagnosis["missing_commits"] = missing
         if missing:
             if diagnosis["status"] == "ok":
                 diagnosis["status"] = "drift"
-            issues.append(f"{len(missing)} commit(s) since last update are not reflected in done.")
+            issues.append(
+                f"{len(missing)} commit(s) in recent history are not reflected in done."
+            )
 
     # PRD timestamp advisory.
     prd_path = _find_prd(project_dir)

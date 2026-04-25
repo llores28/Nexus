@@ -384,6 +384,39 @@ class TestRunJournal:
         assert d["status"] == "ok"
         assert d["issues"] == []
 
+    def test_health_drift_when_done_empty_but_git_has_history(self, tmp_path):
+        """Regression: a freshly created state.json with empty done MUST be
+        flagged as drift when git has commits — even though `last_updated` is
+        "now" (it was just saved). This is the case `nexus init --upgrade`
+        hits on a project that predates Phase 1 hooks."""
+        import subprocess
+
+        # Build a minimal git repo with one commit.
+        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@x", "PATH": __import__("os").environ.get("PATH", "")}
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=env)
+        (tmp_path / "README.md").write_text("# test\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, env=env)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: initial commit"],
+            cwd=tmp_path, check=True, env=env,
+        )
+
+        # Save a fresh state.json with empty done and last_updated = now (this
+        # mimics `_persist_tier` writing state during init upgrade).
+        state = _load_state(tmp_path)
+        _save_state(tmp_path, state)
+        assert state["done"] == []
+
+        # The diagnostic must surface drift, not "ok", because the commit
+        # subject is not in done.
+        d = _diagnose_journal(tmp_path)
+        assert d["status"] == "drift", (
+            f"expected drift (commit not in empty done), got {d['status']}: {d['issues']}"
+        )
+        assert d["missing_commits"]
+        assert any("initial commit" in c["subject"] for c in d["missing_commits"])
+
     def test_health_stale_after_long_idle(self, tmp_path):
         run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
         # Forge an old last_updated to simulate age.
