@@ -16,9 +16,14 @@ def generate_dashboard(
     git_status: Optional[str],
     audit_entries: list[dict],
     output_path: Path,
+    top_files: Optional[list[tuple[str, int]]] = None,
 ) -> None:
-    """Generate and write the self-contained dashboard HTML."""
-    html = _build_html(state, git_commits, git_status, audit_entries)
+    """Generate and write the self-contained dashboard HTML.
+
+    `top_files` is a precomputed [(path, count), ...] list. When None, the
+    heatmap falls back to deriving counts from session_log (legacy path).
+    """
+    html = _build_html(state, git_commits, git_status, audit_entries, top_files)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
 
@@ -39,6 +44,7 @@ def _build_html(
     git_commits: list[dict],
     git_status: Optional[str],
     audit_entries: list[dict],
+    top_files: Optional[list[tuple[str, int]]] = None,
 ) -> str:
     project = _esc(state.get("project", "Project"))
     status = _esc(state.get("status", "UNKNOWN"))
@@ -57,11 +63,15 @@ def _build_html(
     blockers = state.get("blockers", [])
     session_log = list(reversed(state.get("session_log", [])[-15:]))
 
-    file_freq: dict[str, int] = {}
-    for entry in state.get("session_log", []):
-        for f in entry.get("changed_files", []):
-            file_freq[f] = file_freq.get(f, 0) + 1
-    top_files = sorted(file_freq.items(), key=lambda x: -x[1])[:10]
+    # Heatmap source: prefer caller-supplied top_files (git churn). Only fall
+    # back to session_log aggregation when no churn was provided — this keeps
+    # legacy non-git callers working.
+    if top_files is None:
+        file_freq: dict[str, int] = {}
+        for entry in state.get("session_log", []):
+            for f in entry.get("changed_files", []):
+                file_freq[f] = file_freq.get(f, 0) + 1
+        top_files = sorted(file_freq.items(), key=lambda x: -x[1])[:10]
 
     done_html = _render_list(done_items, "No items logged yet.", bullet=True)
     next_html = _render_checklist(next_items)

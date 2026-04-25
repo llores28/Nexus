@@ -5,13 +5,21 @@ Subcommands:
   session-start   — start a new session, show last state, offer git init if missing
   session-end     — summarize changes (diff-based), prompt for next steps, write state
   log             — append a one-line event (non-interactive, Cascade-friendly)
+                    Auto-rolls the session if it is stale (idle >4h, new UTC date,
+                    or branch changed) so session_log stays populated even when
+                    callers never invoke session-end.
   status          — display current .nexus/state.md
-  export          — generate .nexus/state-dashboard.html
+  export          — generate .nexus/state-dashboard.html (file heatmap derived
+                    from `git log --name-only` since session start)
   diff            — show auto-detected file changes since session start
+  next            — manage the next-tasks list (add|done|list|clear)
+  blocker         — manage the blockers list (add|clear|list)
+  setup-hooks     — install/upgrade git hooks; pass --force to overwrite Nexus hooks
 """
 
 import json
 import os
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -30,9 +38,29 @@ STATE_JSON = ".nexus/state.json"
 STATE_MD = ".nexus/state.md"
 DASHBOARD_HTML = ".nexus/state-dashboard.html"
 DIFFS_DIR = ".cache/bs-cli/diffs"
+HOOK_LOG = ".cache/bs-cli/hook.log"
 
 MAX_DONE_ITEMS = 20
 MAX_SESSION_LOG = 50
+SESSION_IDLE_HOURS = 4.0  # auto-roll session after this much idle time
+HOOK_VERSION = 2  # bump when hook templates change incompatibly
+
+# Conventional Commits — order shown in rendered state.md
+CC_TYPE_ORDER = [
+    "feat", "fix", "perf", "refactor", "docs", "test",
+    "chore", "ci", "build", "style", "revert", "other",
+]
+CC_TYPE_LABEL = {
+    "feat": "Features", "fix": "Fixes", "perf": "Performance",
+    "refactor": "Refactoring", "docs": "Docs", "test": "Tests",
+    "chore": "Chores", "ci": "CI", "build": "Build", "style": "Style",
+    "revert": "Reverts", "other": "Other",
+}
+_CC_PATTERN = re.compile(
+    r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)"
+    r"(\([^)]+\))?(!)?:\s*(.+)$",
+    re.IGNORECASE,
+)
 
 
 # --- Git Helpers ---
@@ -145,6 +173,192 @@ def _git_status_short(git_root: Path) -> str:
     return stdout if rc == 0 else ""
 
 
+def _git_current_branch(git_root: Path) -> Optional[str]:
+    """Return current branch name (or None on detached HEAD / failure)."""
+    rc, out, _ = _git_run(["rev-parse", "--abbrev-ref", "HEAD"], git_root)
+    if rc != 0 or not out or out == "HEAD":
+        return None
+    return out
+
+
+def _git_files_since(git_root: Path, since_iso: str) -> list[str]:
+    """Return distinct file paths touched by commits since the given ISO timestamp."""
+    rc, out, _ = _git_run(
+        ["log", f"--since={since_iso}", "--name-only", "--pretty=format:"],
+        git_root,
+    )
+    if rc != 0 or not out:
+        return []
+    return sorted({line.strip() for line in out.splitlines() if line.strip()})
+
+
+def _git_commits_since(git_root: Path, since_iso: str, n: int = 20) -> list[dict]:
+    """Return up to N commits since since_iso as list of {hash, date, message} dicts."""
+    rc, out, _ = _git_run(
+        ["log", f"--since={since_iso}", f"-{n}", "--pretty=format:%H|%as|%s"],
+        git_root,
+    )
+    if rc != 0 or not out:
+        return []
+    commits = []
+    for line in out.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) == 3:
+            commits.append({"hash": parts[0][:8], "date": parts[1], "message": parts[2]})
+    return commits
+
+
+def _git_file_churn(git_root: Path, since_iso: Optional[str] = None,
+                    max_commits: int = 100) -> dict[str, int]:
+    """Return {file_path: commit_count} for files touched in the window.
+
+    Falls back to last `max_commits` commits if since_iso is None.
+    Used to drive the dashboard heatmap directly from git history rather than
+    the (potentially stale) session_log.
+    """
+    if since_iso:
+        args = ["log", f"--since={since_iso}", "--name-only", "--pretty=format:%n"]
+    else:
+        args = ["log", f"-{max_commits}", "--name-only", "--pretty=format:%n"]
+    rc, out, _ = _git_run(args, git_root)
+    if rc != 0 or not out:
+        return {}
+    counts: dict[str, int] = {}
+    for line in out.splitlines():
+        f = line.strip()
+        if f:
+            counts[f] = counts.get(f, 0) + 1
+    return counts
+
+
+# --- Conventional Commits parsing ---
+
+def _parse_conventional_commit(subject: str) -> Optional[dict]:
+    """Parse a Conventional Commits subject. Returns {type, scope, breaking, summary} or None.
+
+    Tolerates the `git commit: ` prefix that the post-commit hook prepends.
+    """
+    s = subject.strip()
+    low = s.lower()
+    if low.startswith("git commit:"):
+        s = s[len("git commit:"):].strip()
+    m = _CC_PATTERN.match(s)
+    if not m:
+        return None
+    return {
+        "type": m.group(1).lower(),
+        "scope": m.group(2)[1:-1] if m.group(2) else None,
+        "breaking": bool(m.group(3)),
+        "summary": m.group(4).strip(),
+    }
+
+
+def _classify_done_item(item: str) -> str:
+    """Return Conventional Commit type for a done-list item, or 'other'."""
+    payload = item.split("] ", 1)[-1] if "] " in item else item
+    parsed = _parse_conventional_commit(payload)
+    return parsed["type"] if parsed else "other"
+
+
+def _group_done_by_type(items: list[str]) -> list[tuple[str, list[str]]]:
+    """Group done items by Conventional Commit type, in display order.
+
+    Returns list of (label, items) for non-empty groups only.
+    """
+    groups: dict[str, list[str]] = {t: [] for t in CC_TYPE_ORDER}
+    for item in items:
+        groups[_classify_done_item(item)].append(item)
+    return [(CC_TYPE_LABEL[t], groups[t]) for t in CC_TYPE_ORDER if groups[t]]
+
+
+# --- Session lifecycle helpers ---
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO-8601 string (with or without trailing Z) to a tz-aware datetime."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _should_roll_session(state: dict, git_root: Optional[Path]) -> tuple[bool, str]:
+    """Decide whether the current session is stale and should auto-close.
+
+    Triggers (any one):
+      - >= SESSION_IDLE_HOURS since session start
+      - UTC date has changed since session start
+      - branch changed since session start (when git is available)
+
+    Returns (should_roll, reason). Reason is empty when not rolling.
+    """
+    start_dt = _parse_iso(state.get("session_start_time"))
+    if start_dt is None:
+        return False, ""
+    now = datetime.now(timezone.utc)
+    hours_idle = (now - start_dt).total_seconds() / 3600.0
+    if hours_idle >= SESSION_IDLE_HOURS:
+        return True, f"idle {hours_idle:.1f}h"
+    if now.date() != start_dt.date():
+        return True, f"new date ({now.strftime('%Y-%m-%d')})"
+    if git_root:
+        current = _git_current_branch(git_root)
+        recorded = state.get("session_branch")
+        if recorded and current and current != recorded:
+            return True, f"branch {recorded}->{current}"
+    return False, ""
+
+
+def _close_session(state: dict, git_root: Optional[Path], reason: str) -> None:
+    """Close the current session non-interactively by appending a session_log entry.
+
+    Pulls activity (commits + touched files) from git when available, so the
+    session_log stays populated even when callers never run session-end.
+    """
+    session_n = state.get("session_number", 0)
+    if session_n < 1:
+        return
+
+    start_iso = state.get("session_start_time")
+    if git_root and start_iso:
+        files = _git_files_since(git_root, start_iso)
+        commits = _git_commits_since(git_root, start_iso, n=20)
+    else:
+        files, commits = [], []
+
+    if commits:
+        head = "; ".join(c.get("message", "")[:40] for c in commits[:3])
+        summary = f"{len(commits)} commit(s): {head}"
+    else:
+        summary = f"auto-closed ({reason})"
+
+    end_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state.setdefault("session_log", []).append({
+        "session": session_n,
+        "date": end_iso[:10],
+        "summary": summary[:120],
+        "file_count": len(files),
+        "changed_files": files[:30],
+        "commits": commits[:10],
+        "branch": state.get("session_branch"),
+        "end_time": end_iso,
+        "auto_closed": True,
+        "close_reason": reason,
+    })
+
+
+def _open_session(state: dict, git_root: Optional[Path], project_dir: Path) -> None:
+    """Open a new session non-interactively. Bumps counter, stamps start time + branch."""
+    state["session_number"] = state.get("session_number", 0) + 1
+    state["session_start_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state["session_branch"] = _git_current_branch(git_root) if git_root else None
+    if not git_root:
+        state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
+    else:
+        state["baseline_mtimes"] = {}
+
+
 def _offer_git_init(project_dir: Path) -> Optional[Path]:
     """Prompt user to init git repo. Returns git_root if initialized, else None."""
     import click
@@ -211,6 +425,7 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
         "status": "IN PROGRESS",
         "session_number": 0,
         "session_start_time": None,
+        "session_branch": None,
         "baseline_mtimes": {},
         "done": [],
         "next": [],
@@ -247,20 +462,26 @@ def _save_state(project_dir: Path, state: dict[str, Any]) -> None:
 
 def _render_state_md(state: dict[str, Any]) -> str:
     """Render state dict as human/AI-readable Markdown."""
+    branch = state.get("session_branch")
+    branch_suffix = f" · branch={branch}" if branch else ""
     lines = [
         "# Project State",
         f"_Last updated: {state.get('last_updated', 'unknown')} · "
-        f"Session {state.get('session_number', 0)} · nexus-journal v0.1_",
+        f"Session {state.get('session_number', 0)}{branch_suffix} · nexus-journal v0.2_",
         "",
         f"## Status: {state.get('status', 'UNKNOWN')}",
         "",
-        "## What's Done (recent)",
+        f"## What's Done (last {MAX_DONE_ITEMS})",
     ]
 
     done = state.get("done", [])
     if done:
-        for item in done[-MAX_DONE_ITEMS:]:
-            lines.append(f"- {item}")
+        grouped = _group_done_by_type(done[-MAX_DONE_ITEMS:])
+        for label, items in grouped:
+            lines.append("")
+            lines.append(f"### {label} ({len(items)})")
+            for item in items:
+                lines.append(f"- {item}")
     else:
         lines.append("_Nothing logged yet._")
 
@@ -310,8 +531,16 @@ def _save_diff_snapshot(project_dir: Path, session_n: int, diff_text: str) -> No
 
 # --- Subcommand implementations ---
 
+_HOOK_VERSION_TAG = f"nexus-journal-hook v{HOOK_VERSION}"
+
+
 def _hooks_installed(git_root: Path) -> bool:
-    """Return True if Nexus journal hooks are present in .git/hooks/."""
+    """Return True if current-version Nexus journal hooks are present.
+
+    'Current version' is defined by the _HOOK_VERSION_TAG marker. Older Nexus
+    hooks (no version tag) are reported as NOT installed so callers know an
+    upgrade is needed.
+    """
     hooks_dir = git_root / ".git" / "hooks"
     for name in ("post-commit", "pre-push"):
         hp = hooks_dir / name
@@ -321,9 +550,24 @@ def _hooks_installed(git_root: Path) -> bool:
             content = hp.read_text(encoding="utf-8")
         except OSError:
             return False
-        if "nexus" not in content.lower() and "bs_cli" not in content.lower():
+        if _HOOK_VERSION_TAG not in content:
             return False
     return True
+
+
+def _hook_status(hook_path: Path) -> str:
+    """Classify a hook file: 'missing', 'current', 'outdated', or 'foreign'."""
+    if not hook_path.exists():
+        return "missing"
+    try:
+        content = hook_path.read_text(encoding="utf-8")
+    except OSError:
+        return "foreign"
+    if _HOOK_VERSION_TAG in content:
+        return "current"
+    if "nexus" in content.lower() or "bs_cli" in content.lower():
+        return "outdated"
+    return "foreign"
 
 
 def _cmd_session_start(project_dir: Path, output_format: str) -> None:
@@ -336,18 +580,20 @@ def _cmd_session_start(project_dir: Path, output_format: str) -> None:
     if git_root is None:
         git_root = _offer_git_init(project_dir)
 
-    session_n = state["session_number"] + 1
-    state["session_number"] = session_n
-    state["session_start_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # If a previous session is still open and stale, close it first so the
+    # session_log gets an entry rather than orphaning the old session.
+    should_roll, reason = _should_roll_session(state, git_root)
+    if should_roll:
+        _close_session(state, git_root, reason)
+
+    _open_session(state, git_root, project_dir)
+    session_n = state["session_number"]
 
     if git_root:
         rc, diff_text, _ = _git_run(["diff", "HEAD"], git_root)
         if rc != 0:
             rc2, diff_text, _ = _git_run(["diff"], git_root)
         _save_diff_snapshot(project_dir, session_n, diff_text or "")
-        state["baseline_mtimes"] = {}
-    else:
-        state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
 
     _save_state(project_dir, state)
 
@@ -464,6 +710,9 @@ def _cmd_session_end(project_dir: Path, output_format: str) -> None:
     }
     state["session_log"].append(session_entry)
     state["baseline_mtimes"] = {}
+    # Mark the session as closed so the next `journal log` opens a fresh
+    # session rather than tagging entries with this (now-finalized) session.
+    state["session_start_time"] = None
 
     _save_state(project_dir, state)
 
@@ -484,19 +733,28 @@ def _cmd_session_end(project_dir: Path, output_format: str) -> None:
 
 
 def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: bool = True) -> None:
-    """Append a one-line log entry (non-interactive)."""
-    import os
-    state = _load_state(project_dir)
+    """Append a one-line log entry (non-interactive).
 
-    # Auto-bootstrap session 1 if no session has been started yet.
-    # Without this, hook-driven logs accumulate under S0 and the dashboard
-    # shows session_start_time=null forever.
-    if state.get("session_number", 0) < 1:
-        state["session_number"] = 1
-        state["session_start_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        git_root = _resolve_git_root(project_dir)
-        if not git_root:
-            state["baseline_mtimes"] = _snapshot_mtimes(project_dir)
+    Auto-rolls the session before logging when stale (idle, new day, or branch
+    changed). This is the key fix for callers that never invoke session-end —
+    without it, every commit accumulates under one frozen session forever.
+    """
+    state = _load_state(project_dir)
+    git_root = _resolve_git_root(project_dir)
+
+    if state.get("session_number", 0) < 1 or state.get("session_start_time") is None:
+        # First-ever log, or the previous session was explicitly closed by
+        # `journal session-end`. Either way, open a fresh session.
+        _open_session(state, git_root, project_dir)
+        rolled_reason = None
+    else:
+        should_roll, reason = _should_roll_session(state, git_root)
+        if should_roll:
+            _close_session(state, git_root, reason)
+            _open_session(state, git_root, project_dir)
+            rolled_reason = reason
+        else:
+            rolled_reason = None
 
     session_n = state["session_number"]
     date_short = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -504,10 +762,14 @@ def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: b
     state["done"].append(entry)
     _save_state(project_dir, state)
 
+    msg = f"Logged: {entry}"
+    if rolled_reason:
+        msg += f" (auto-rolled session: {rolled_reason})"
     emit(make_result(
         "journal-log",
         Status.PASS,
-        message=f"Logged: {entry}",
+        message=msg,
+        details={"session": session_n, "rolled": bool(rolled_reason), "reason": rolled_reason},
     ), OutputFormat(output_format))
 
     # Auto-export the dashboard so it never goes stale silently.
@@ -517,6 +779,146 @@ def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: b
             _cmd_export(project_dir, "json")
         except Exception:
             pass
+
+
+def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Manage the 'next tasks' list non-interactively.
+
+    journal next add <task...>     append a task
+    journal next done <idx|substr> mark first match as done (moves to 'done')
+    journal next list              show current next list
+    journal next clear             remove all
+    """
+    state = _load_state(project_dir)
+    next_list = list(state.get("next", []))
+    action = args[0] if args else "list"
+    rest = args[1:]
+
+    if action == "add":
+        task = " ".join(rest).strip()
+        if not task:
+            emit(make_result("journal-next", Status.FAIL,
+                             message="Usage: journal next add <task>"),
+                 OutputFormat(output_format))
+            return
+        if task in next_list:
+            emit(make_result("journal-next-add", Status.WARN,
+                             message=f"Already queued: {task}"),
+                 OutputFormat(output_format))
+            return
+        next_list.append(task)
+        state["next"] = next_list
+        _save_state(project_dir, state)
+        emit(make_result("journal-next-add", Status.PASS,
+                         message=f"Added: {task}",
+                         details={"next": next_list}),
+             OutputFormat(output_format))
+
+    elif action == "done":
+        target = " ".join(rest).strip()
+        if not target:
+            emit(make_result("journal-next", Status.FAIL,
+                             message="Usage: journal next done <index|substring>"),
+                 OutputFormat(output_format))
+            return
+        completed: Optional[str] = None
+        try:
+            idx = int(target)
+            if 0 <= idx < len(next_list):
+                completed = next_list.pop(idx)
+        except ValueError:
+            tl = target.lower()
+            for i, item in enumerate(next_list):
+                if tl in item.lower():
+                    completed = next_list.pop(i)
+                    break
+        if completed is None:
+            emit(make_result("journal-next-done", Status.FAIL,
+                             message=f"No matching task: {target}"),
+                 OutputFormat(output_format))
+            return
+        # Auto-bootstrap a session if needed so the entry has a valid Sn tag.
+        if state.get("session_number", 0) < 1:
+            git_root = _resolve_git_root(project_dir)
+            _open_session(state, git_root, project_dir)
+        session_n = state["session_number"]
+        date_short = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        state["done"].append(f"[{date_short} S{session_n}] done: {completed}")
+        state["next"] = next_list
+        _save_state(project_dir, state)
+        emit(make_result("journal-next-done", Status.PASS,
+                         message=f"Completed: {completed}",
+                         details={"next": next_list}),
+             OutputFormat(output_format))
+
+    elif action == "list":
+        emit(make_result("journal-next-list", Status.INFO,
+                         message=f"{len(next_list)} task(s) queued",
+                         details={"next": next_list}),
+             OutputFormat(output_format))
+
+    elif action == "clear":
+        state["next"] = []
+        _save_state(project_dir, state)
+        emit(make_result("journal-next-clear", Status.PASS,
+                         message="Cleared next list."),
+             OutputFormat(output_format))
+
+    else:
+        emit(make_result("journal-next", Status.FAIL,
+                         message=f"Unknown action: {action}. Use add|done|list|clear."),
+             OutputFormat(output_format))
+
+
+def _cmd_blocker(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Manage the blockers list non-interactively.
+
+    journal blocker add <text...>  append a blocker
+    journal blocker clear          remove all
+    journal blocker list           show current blockers
+    """
+    state = _load_state(project_dir)
+    blockers = list(state.get("blockers", []))
+    action = args[0] if args else "list"
+    rest = args[1:]
+
+    if action == "add":
+        text = " ".join(rest).strip()
+        if not text:
+            emit(make_result("journal-blocker", Status.FAIL,
+                             message="Usage: journal blocker add <text>"),
+                 OutputFormat(output_format))
+            return
+        if text in blockers:
+            emit(make_result("journal-blocker-add", Status.WARN,
+                             message=f"Already recorded: {text}"),
+                 OutputFormat(output_format))
+            return
+        blockers.append(text)
+        state["blockers"] = blockers
+        _save_state(project_dir, state)
+        emit(make_result("journal-blocker-add", Status.PASS,
+                         message=f"Added blocker: {text}",
+                         details={"blockers": blockers}),
+             OutputFormat(output_format))
+
+    elif action == "clear":
+        state["blockers"] = []
+        _save_state(project_dir, state)
+        emit(make_result("journal-blocker-clear", Status.PASS,
+                         message="Cleared blockers."),
+             OutputFormat(output_format))
+
+    elif action == "list":
+        emit(make_result("journal-blocker-list", Status.INFO,
+                         message=f"{len(blockers)} blocker(s)",
+                         details={"blockers": blockers}),
+             OutputFormat(output_format))
+
+    else:
+        emit(make_result("journal-blocker", Status.FAIL,
+                         message=f"Unknown action: {action}. Use add|clear|list."),
+             OutputFormat(output_format))
 
 
 def _cmd_status(project_dir: Path, output_format: str) -> None:
@@ -584,7 +986,11 @@ def _cmd_diff(project_dir: Path, output_format: str) -> None:
 
 
 def _cmd_export(project_dir: Path, output_format: str) -> None:
-    """Generate .nexus/state-dashboard.html."""
+    """Generate .nexus/state-dashboard.html.
+
+    Heatmap is driven from `git log --name-only` rather than session_log so it
+    stays meaningful even when session-end is never called.
+    """
     from nexus.cli.tools.journal_dashboard import generate_dashboard
 
     state = _load_state(project_dir)
@@ -592,6 +998,12 @@ def _cmd_export(project_dir: Path, output_format: str) -> None:
 
     git_commits = _git_log_recent(git_root, n=10) if git_root else []
     git_status = _git_status_short(git_root) if git_root else None
+
+    if git_root:
+        churn = _git_file_churn(git_root, since_iso=None, max_commits=100)
+    else:
+        churn = {}
+    top_files = sorted(churn.items(), key=lambda x: -x[1])[:10]
 
     audit_entries = _load_audit_log(project_dir)
 
@@ -602,6 +1014,7 @@ def _cmd_export(project_dir: Path, output_format: str) -> None:
         git_status=git_status,
         audit_entries=audit_entries,
         output_path=html_path,
+        top_files=top_files,
     )
 
     emit(make_result(
@@ -632,57 +1045,64 @@ def _load_audit_log(project_dir: Path, last_n: int = 20) -> list[dict]:
 
 # --- Git hook factories (paths baked at install-time) ---
 
-def _make_post_commit_hook(bs_cli_path: str, project_dir: str) -> str:
+def _make_post_commit_hook(bs_cli_path: str, project_dir: str, log_path: str) -> str:
     """Return a post-commit hook script with absolute paths baked in.
 
-    Using baked-in absolute paths instead of deriving paths from
-    `git rev-parse --show-toplevel` fixes nested-repo scenarios where
-    the git root and the Nexus toolkit root are in different directories.
+    Stderr is appended to `log_path` instead of /dev/null so silent failures
+    (wrong python, missing module) become diagnosable. Stdout still goes to
+    /dev/null because journal log emits JSON that would spam the log file.
     """
     return f"""\
 #!/bin/sh
-# Nexus journal — auto-log on every git commit
+# {_HOOK_VERSION_TAG} — auto-log on every git commit
 PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal log "git commit: $(git log -1 --pretty=%s)" \\
-  --project-dir "{project_dir}" --format json > /dev/null 2>&1 || true
+  --project-dir "{project_dir}" --format json >/dev/null 2>>"{log_path}" || true
 """
 
 
-def _make_pre_push_hook(bs_cli_path: str, project_dir: str) -> str:
+def _make_pre_push_hook(bs_cli_path: str, project_dir: str, log_path: str) -> str:
     """Return a pre-push hook script with absolute paths baked in."""
     return f"""\
 #!/bin/sh
-# Nexus journal — regenerate dashboard before every push
+# {_HOOK_VERSION_TAG} — regenerate dashboard before every push
 PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal export \\
-  --project-dir "{project_dir}" --format json > /dev/null 2>&1 || true
+  --project-dir "{project_dir}" --format json >/dev/null 2>>"{log_path}" || true
 """
 
 
-def _make_post_commit_hook_bat(bs_cli_path: str, project_dir: str) -> str:
+def _make_post_commit_hook_bat(bs_cli_path: str, project_dir: str, log_path: str) -> str:
     """Windows .bat companion for post-commit (used when sh is unavailable)."""
     return (
         "@echo off\r\n"
-        "rem Nexus journal — auto-log on every git commit\r\n"
+        f"rem {_HOOK_VERSION_TAG} — auto-log on every git commit\r\n"
         f'set PYTHONIOENCODING=utf-8\r\n'
         f'for /f "tokens=*" %%m in (\'git log -1 --pretty=%%s\') do (\r\n'
         f'  python "{bs_cli_path}" journal log "git commit: %%m" '
-        f'--project-dir "{project_dir}" --format json >nul 2>&1\r\n'
+        f'--project-dir "{project_dir}" --format json >nul 2>>"{log_path}"\r\n'
         f')\r\n'
     )
 
 
-def _make_pre_push_hook_bat(bs_cli_path: str, project_dir: str) -> str:
+def _make_pre_push_hook_bat(bs_cli_path: str, project_dir: str, log_path: str) -> str:
     """Windows .bat companion for pre-push."""
     return (
         "@echo off\r\n"
-        "rem Nexus journal — regenerate dashboard before every push\r\n"
+        f"rem {_HOOK_VERSION_TAG} — regenerate dashboard before every push\r\n"
         f'set PYTHONIOENCODING=utf-8\r\n'
         f'python "{bs_cli_path}" journal export '
-        f'--project-dir "{project_dir}" --format json >nul 2>&1\r\n'
+        f'--project-dir "{project_dir}" --format json >nul 2>>"{log_path}"\r\n'
     )
 
 
-def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
-    """Install git hooks for automatic journal tracking."""
+def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False) -> None:
+    """Install or upgrade git hooks for automatic journal tracking.
+
+    Behavior matrix per existing hook:
+      missing  -> install
+      current  -> skip (or reinstall when force=True)
+      outdated -> upgrade in place (treat older Nexus hooks as eligible)
+      foreign  -> prompt (human) / skip with note (json) unless force=True
+    """
     import click
     import stat
     import sys
@@ -700,66 +1120,104 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
     # relative to the Nexus toolkit (critical for nested-repo setups).
     bs_cli_path = str(Path(__file__).resolve().parent.parent / "bs_cli.py")
     pd_str = str(project_dir.resolve())
+    log_path_str = str((project_dir / HOOK_LOG).resolve())
     # Forward slashes work in both sh and Windows Python paths inside strings.
     bs_cli_posix = bs_cli_path.replace("\\", "/")
     pd_posix = pd_str.replace("\\", "/")
+    log_posix = log_path_str.replace("\\", "/")
+
+    # Pre-create the .cache dir so the very first hook fire can write to it.
+    try:
+        Path(log_path_str).parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
     hooks_dir = git_root / ".git" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    installed = []
-    skipped = []
+    installed: list[str] = []
+    upgraded: list[str] = []
+    skipped: list[str] = []
 
     sh_hooks = {
-        "post-commit": _make_post_commit_hook(bs_cli_posix, pd_posix),
-        "pre-push": _make_pre_push_hook(bs_cli_posix, pd_posix),
+        "post-commit": _make_post_commit_hook(bs_cli_posix, pd_posix, log_posix),
+        "pre-push": _make_pre_push_hook(bs_cli_posix, pd_posix, log_posix),
     }
 
     for hook_name, hook_content in sh_hooks.items():
         hook_path = hooks_dir / hook_name
-        if hook_path.exists():
-            try:
-                existing = hook_path.read_text(encoding="utf-8")
-            except OSError:
-                existing = ""
-            if "nexus" in existing.lower() or "bs_cli" in existing.lower():
-                skipped.append(f"{hook_name} (already installed)")
+        status = _hook_status(hook_path)
+        action: Optional[str] = None
+
+        if status == "missing":
+            action = "install"
+        elif status == "current":
+            if force:
+                action = "reinstall"
+            else:
+                skipped.append(f"{hook_name} (current)")
                 continue
-            if output_format == "human":
-                overwrite = click.confirm(
+        elif status == "outdated":
+            action = "upgrade"
+        elif status == "foreign":
+            if force:
+                action = "overwrite"
+            elif output_format == "human":
+                if click.confirm(
                     f"  Hook '{hook_name}' already exists (not by Nexus). Overwrite?",
                     default=False,
-                )
-                if not overwrite:
-                    skipped.append(f"{hook_name} (kept existing)")
+                ):
+                    action = "overwrite"
+                else:
+                    skipped.append(f"{hook_name} (kept foreign)")
                     continue
+            else:
+                skipped.append(f"{hook_name} (foreign — pass --force to overwrite)")
+                continue
 
         hook_path.write_text(hook_content, encoding="utf-8")
         try:
             hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         except OSError:
             pass
-        installed.append(hook_name)
+        if action == "upgrade":
+            upgraded.append(hook_name)
+        else:
+            installed.append(f"{hook_name} ({action})")
 
     # Windows: write .bat companions so native git (not WSL) can fire hooks.
     is_windows = sys.platform == "win32"
     if is_windows:
         bat_hooks = {
-            "post-commit.bat": _make_post_commit_hook_bat(bs_cli_path, pd_str),
-            "pre-push.bat": _make_pre_push_hook_bat(bs_cli_path, pd_str),
+            "post-commit.bat": _make_post_commit_hook_bat(bs_cli_path, pd_str, log_path_str),
+            "pre-push.bat": _make_pre_push_hook_bat(bs_cli_path, pd_str, log_path_str),
         }
         for bat_name, bat_content in bat_hooks.items():
             bat_path = hooks_dir / bat_name
-            if not bat_path.exists():
+            status = _hook_status(bat_path)
+            if status == "missing":
                 try:
                     bat_path.write_text(bat_content, encoding="utf-8")
-                    installed.append(bat_name)
+                    installed.append(f"{bat_name} (install)")
+                except OSError:
+                    pass
+            elif status == "current" and not force:
+                skipped.append(f"{bat_name} (current)")
+            else:  # outdated, foreign-with-force, or current-with-force
+                try:
+                    bat_path.write_text(bat_content, encoding="utf-8")
+                    if status == "outdated":
+                        upgraded.append(bat_name)
+                    else:
+                        installed.append(f"{bat_name} ({status})")
                 except OSError:
                     pass
 
     msg_parts = []
     if installed:
         msg_parts.append(f"Installed: {', '.join(installed)}")
+    if upgraded:
+        msg_parts.append(f"Upgraded: {', '.join(upgraded)}")
     if skipped:
         msg_parts.append(f"Skipped: {', '.join(skipped)}")
 
@@ -769,26 +1227,34 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
         click.echo(f"\n  Git hooks path: {hooks_dir}")
         click.echo(f"  bs_cli path  : {bs_cli_path}")
         click.echo(f"  project-dir  : {pd_str}")
+        click.echo(f"  hook log     : {log_path_str}")
         for h in installed:
-            click.echo(f"  [ok] {h}")
+            click.echo(f"  [install] {h}")
+        for h in upgraded:
+            click.echo(f"  [upgrade] {h}")
         for s in skipped:
             click.echo(f"  - {s}")
         click.echo()
-        click.echo("  post-commit : auto-logs commit message to .nexus/state.md")
-        click.echo("  pre-push    : regenerates state-dashboard.html before push")
+        click.echo(f"  Hook version : v{HOOK_VERSION}")
+        click.echo("  post-commit  : auto-logs commit message to .nexus/state.md")
+        click.echo("  pre-push     : regenerates state-dashboard.html before push")
+        click.echo("  stderr       : appended to the hook log (not /dev/null)")
         if is_windows:
-            click.echo("  .bat files  : Windows-native git companions installed")
+            click.echo("  .bat files   : Windows-native git companions installed")
         click.echo()
 
     emit(make_result(
         "journal-setup-hooks",
-        Status.PASS if installed else Status.WARN,
+        Status.PASS if (installed or upgraded) else Status.WARN,
         message=message,
         details={
             "hooks_dir": str(hooks_dir),
             "bs_cli_path": bs_cli_path,
             "project_dir": pd_str,
+            "log_path": log_path_str,
+            "hook_version": HOOK_VERSION,
             "installed": installed,
+            "upgraded": upgraded,
             "skipped": skipped,
         },
     ), OutputFormat(output_format)) if output_format != "human" else None
@@ -797,7 +1263,7 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str) -> None:
 # --- CLI dispatcher ---
 
 def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str,
-                no_export: bool = False) -> None:
+                no_export: bool = False, force: bool = False) -> None:
     """Dispatch journal subcommands."""
     pd = Path(project_dir).resolve()
 
@@ -818,7 +1284,11 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
     elif subcommand == "export":
         _cmd_export(pd, output_format)
     elif subcommand == "setup-hooks":
-        _cmd_setup_hooks(pd, output_format)
+        _cmd_setup_hooks(pd, output_format, force=force)
+    elif subcommand == "next":
+        _cmd_next(pd, args, output_format)
+    elif subcommand == "blocker":
+        _cmd_blocker(pd, args, output_format)
     else:
         emit(make_result(
             "journal",

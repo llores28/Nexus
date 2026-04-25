@@ -191,18 +191,23 @@ def init_cmd(ctx, output_format, upgrade, refresh, template, project_dir):
 
 
 @cli.command("journal")
-@click.argument("subcommand", type=click.Choice(["session-start", "session-end", "log", "status", "diff", "export", "setup-hooks"]))
+@click.argument("subcommand", type=click.Choice([
+    "session-start", "session-end", "log", "status", "diff", "export",
+    "setup-hooks", "next", "blocker",
+]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
 @click.option("--project-dir", default=".", help="Project directory.")
 @click.option("--no-export", "no_export", is_flag=True, default=False,
               help="Skip auto-dashboard export after 'log' (useful in tight CI loops).")
+@click.option("--force", "force", is_flag=True, default=False,
+              help="With 'setup-hooks': overwrite existing Nexus-installed hooks (used to upgrade old hook versions).")
 @click.pass_context
-def journal_cmd(ctx, subcommand, args, output_format, project_dir, no_export):
+def journal_cmd(ctx, subcommand, args, output_format, project_dir, no_export, force):
     """Project journal — cross-session state tracking, git diff, and dashboard export."""
     from nexus.cli.tools.journal import run_journal
     run_journal(subcommand=subcommand, args=args, output_format=output_format,
-                project_dir=project_dir, no_export=no_export)
+                project_dir=project_dir, no_export=no_export, force=force)
 
 
 @cli.command("supply-chain")
