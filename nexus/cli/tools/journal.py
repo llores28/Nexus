@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from nexus.cli.utils import (
-    OutputFormat, Status, emit, make_result, find_project_root,
+    OutputFormat, Status, emit, make_result, find_project_root, _safe_echo,
 )
 
 
@@ -497,9 +497,9 @@ def _cmd_status(project_dir: Path, output_format: str) -> None:
 
     if output_format == "human":
         if md_path.exists():
-            click.echo(md_path.read_text(encoding="utf-8"))
+            _safe_echo(md_path.read_text(encoding="utf-8"))
         else:
-            click.echo("  No .nexus/state.md found. Run 'journal session-start' to initialize.")
+            _safe_echo("  No .nexus/state.md found. Run 'journal session-start' to initialize.")
     else:
         emit(make_result(
             "journal-status",
@@ -606,7 +606,7 @@ _POST_COMMIT_HOOK = """\
 #!/bin/sh
 # Nexus journal — auto-log on every git commit
 NEXUS_ROOT="$(git rev-parse --show-toplevel)"
-python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal log "git commit: $(git log -1 --pretty=%s)" \\
+PYTHONIOENCODING=utf-8 python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal log "git commit: $(git log -1 --pretty=%s)" \\
   --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
 """
 
@@ -614,7 +614,7 @@ _PRE_PUSH_HOOK = """\
 #!/bin/sh
 # Nexus journal — export dashboard before every push
 NEXUS_ROOT="$(git rev-parse --show-toplevel)"
-python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal export \\
+PYTHONIOENCODING=utf-8 python "$NEXUS_ROOT/nexus/cli/bs_cli.py" journal export \\
   --project-dir "$NEXUS_ROOT" --format json > /dev/null 2>&1 || true
 """
 

@@ -755,8 +755,12 @@ def _generate_recommendations(
         recs.append({
             "severity": "medium",
             "category": "reliability",
-            "message": f"High CLI error rate: {usage['error_rate']:.1%}",
-            "action": "Investigate recent errors with: python bs_cli.py debug logs .cache/bs-cli/",
+            "message": f"High CLI error rate: {usage['error_rate']:.1%} — on Windows this is often a cp1252 encoding bug (fixed in bs_cli.py startup)",
+            "action": (
+                "If errors persist after upgrade, investigate with: "
+                "python nexus/cli/bs_cli.py debug logs .cache/bs-cli/  "
+                "Workaround for old installs: set PYTHONIOENCODING=utf-8"
+            ),
         })
 
     if usage.get("total_invocations", 0) == 0:

@@ -37,12 +37,20 @@ class Severity(str, Enum):
     INFO = "info"
 
 
+def _safe_echo(text: str) -> None:
+    """click.echo with a Unicode-safe fallback for Windows cp1252 terminals."""
+    try:
+        click.echo(text)
+    except UnicodeEncodeError:
+        click.echo(text.encode(sys.stdout.encoding or "ascii", errors="replace").decode(sys.stdout.encoding or "ascii"))
+
+
 def emit(data: dict[str, Any], fmt: OutputFormat = OutputFormat.JSON) -> None:
     """Emit structured output in the requested format."""
     if fmt == OutputFormat.JSON:
-        click.echo(json.dumps(data, indent=2, default=str))
+        _safe_echo(json.dumps(data, indent=2, default=str))
     elif fmt == OutputFormat.YAML:
-        click.echo(yaml.dump(data, default_flow_style=False, sort_keys=False))
+        _safe_echo(yaml.dump(data, default_flow_style=False, sort_keys=False))
     else:
         _emit_human(data)
 
@@ -54,7 +62,7 @@ def _emit_human(data: dict[str, Any], indent: int = 0) -> None:
         from rich.table import Table
         from rich import print as rprint
 
-        console = Console()
+        console = Console(highlight=False, soft_wrap=True)
 
         if "title" in data:
             console.print(f"\n[bold]{data['title']}[/bold]")
