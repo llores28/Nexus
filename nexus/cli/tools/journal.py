@@ -38,6 +38,8 @@ STATE_JSON = ".nexus/state.json"
 STATE_MD = ".nexus/state.md"
 STATE_SUMMARY_MD = ".nexus/state-summary.md"
 DASHBOARD_HTML = ".nexus/state-dashboard.html"
+DAILY_JOURNAL_DIR = ".nexus/journal"  # append-only system of record (Phase 3)
+DECISIONS_DIR = "docs/decisions"  # MADR-style ADRs (committed by default)
 DIFFS_DIR = ".cache/bs-cli/diffs"
 HOOK_LOG = ".cache/bs-cli/hook.log"
 
@@ -47,9 +49,10 @@ CURSOR_RULE = ".cursor/rules/state.mdc"
 NEXUS_AGENTS_BEGIN = "<!-- nexus:state:begin -->"
 NEXUS_AGENTS_END = "<!-- nexus:state:end -->"
 
-MAX_DONE_ITEMS = 20
+MAX_DONE_ITEMS = 20  # rendered cap in state.md
 MAX_SESSION_LOG = 50
 MAX_SUMMARY_DONE = 15  # entries shown in state-summary.md
+MAX_DONE_KEEP = 100  # storage cap on state.json["done"] (daily files are the system of record)
 SESSION_IDLE_HOURS = 4.0  # auto-roll session after this much idle time
 HOOK_VERSION = 2  # bump when hook templates change incompatibly
 
@@ -422,6 +425,40 @@ def _diff_mtimes(baseline: dict[str, float], project_dir: Path) -> list[str]:
     return sorted(changed)
 
 
+# --- Daily journal (append-only system of record) ---
+
+def _append_daily_journal(project_dir: Path, message: str, branch: Optional[str],
+                          session_n: int, when: Optional[datetime] = None) -> Optional[Path]:
+    """Append an entry to .nexus/journal/YYYY-MM/DD.md.
+
+    The daily file is the system of record — state.json["done"] is a rolling
+    buffer (MAX_DONE_KEEP), but daily files are append-only and never trimmed.
+    Returns the path written to (or None on failure).
+    """
+    now = when or datetime.now(timezone.utc)
+    daily_dir = project_dir / DAILY_JOURNAL_DIR / now.strftime("%Y-%m")
+    try:
+        daily_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    daily_path = daily_dir / f"{now.strftime('%d')}.md"
+
+    branch_tag = f"[{branch}] " if branch else ""
+    line = f"- `{now.strftime('%H:%M:%S')}` S{session_n} {branch_tag}{message.strip()}\n"
+
+    try:
+        if not daily_path.exists():
+            daily_path.write_text(
+                f"# {now.strftime('%Y-%m-%d')}\n\n_Append-only journal · entries from `nexus journal` CLI._\n\n",
+                encoding="utf-8",
+            )
+        with daily_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+        return daily_path
+    except OSError:
+        return None
+
+
 # --- State Read / Write ---
 
 def _load_state(project_dir: Path) -> dict[str, Any]:
@@ -455,11 +492,20 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
 
 
 def _save_state(project_dir: Path, state: dict[str, Any]) -> None:
-    """Write state to .nexus/state.json and regenerate state.md."""
+    """Write state to .nexus/state.json and regenerate state.md.
+
+    Trims state.done to the last MAX_DONE_KEEP entries — older entries are
+    preserved permanently in the daily journal files (.nexus/journal/YYYY-MM/DD.md),
+    so this trim is non-destructive as long as `_append_daily_journal` ran.
+    """
     nexus_dir = project_dir / NEXUS_DIR
     nexus_dir.mkdir(parents=True, exist_ok=True)
 
     state["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    done = state.get("done", [])
+    if len(done) > MAX_DONE_KEEP:
+        state["done"] = done[-MAX_DONE_KEEP:]
 
     json_path = project_dir / STATE_JSON
     json_path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
@@ -765,9 +811,19 @@ def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: b
             rolled_reason = None
 
     session_n = state["session_number"]
-    date_short = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    entry = f"[{date_short} S{session_n}] {message.strip()}"
+    branch = state.get("session_branch")
+    now = datetime.now(timezone.utc)
+    date_short = now.strftime("%Y-%m-%d")
+    branch_tag = f" {branch}" if branch else ""
+    entry = f"[{date_short} S{session_n}{branch_tag}] {message.strip()}"
     state["done"].append(entry)
+
+    # Append to the daily journal first (system of record), THEN trim+save state.
+    # If the daily write fails, we still save state — but the trim cap should
+    # not destroy entries that are still in flight, so MAX_DONE_KEEP=100
+    # gives plenty of headroom even if a daily write was missed.
+    daily_path = _append_daily_journal(project_dir, message.strip(), branch, session_n, now)
+
     _save_state(project_dir, state)
 
     msg = f"Logged: {entry}"
@@ -777,7 +833,13 @@ def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: b
         "journal-log",
         Status.PASS,
         message=msg,
-        details={"session": session_n, "rolled": bool(rolled_reason), "reason": rolled_reason},
+        details={
+            "session": session_n,
+            "branch": branch,
+            "rolled": bool(rolled_reason),
+            "reason": rolled_reason,
+            "daily_file": str(daily_path) if daily_path else None,
+        },
     ), OutputFormat(output_format))
 
     # Auto-export the dashboard so it never goes stale silently.
@@ -850,13 +912,18 @@ def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
             git_root = _resolve_git_root(project_dir)
             _open_session(state, git_root, project_dir)
         session_n = state["session_number"]
-        date_short = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        state["done"].append(f"[{date_short} S{session_n}] done: {completed}")
+        branch = state.get("session_branch")
+        now = datetime.now(timezone.utc)
+        date_short = now.strftime("%Y-%m-%d")
+        branch_tag = f" {branch}" if branch else ""
+        message = f"done: {completed}"
+        state["done"].append(f"[{date_short} S{session_n}{branch_tag}] {message}")
         state["next"] = next_list
+        _append_daily_journal(project_dir, message, branch, session_n, now)
         _save_state(project_dir, state)
         emit(make_result("journal-next-done", Status.PASS,
                          message=f"Completed: {completed}",
-                         details={"next": next_list}),
+                         details={"next": next_list, "branch": branch}),
              OutputFormat(output_format))
 
     elif action == "list":
@@ -1513,6 +1580,149 @@ def _cmd_init_agents(project_dir: Path, output_format: str) -> None:
     ), OutputFormat(output_format)) if output_format != "human" else None
 
 
+# --- Phase 3: Decision records (MADR-minimal) ---
+
+_MADR_TEMPLATE = """\
+# {n:04d}. {title}
+
+- **Status:** proposed
+- **Date:** {date}
+- **Deciders:** TODO
+
+## Context and Problem Statement
+
+TODO — describe the situation, constraints, and the question being answered.
+
+## Considered Options
+
+- TODO option A
+- TODO option B
+
+## Decision Outcome
+
+Chosen option: **TODO**, because TODO.
+
+### Consequences
+
+- Good: TODO
+- Bad: TODO
+
+<!-- Authored via `nexus journal decision add`. Edit freely; Nexus does not regenerate this file. -->
+"""
+
+
+def _slugify(text: str) -> str:
+    """Lowercase, alphanumeric + hyphens, capped at 50 chars. Used for ADR filenames."""
+    s = text.lower().strip()
+    s = re.sub(r"[^a-z0-9\s\-]", "", s)
+    s = re.sub(r"[\s\-]+", "-", s).strip("-")
+    return s[:50] or "decision"
+
+
+def _next_decision_number(decisions_dir: Path) -> int:
+    """Scan existing NNNN-*.md files and return the next sequence number."""
+    if not decisions_dir.exists():
+        return 1
+    max_n = 0
+    try:
+        for f in decisions_dir.glob("[0-9][0-9][0-9][0-9]-*.md"):
+            try:
+                n = int(f.name[:4])
+                max_n = max(max_n, n)
+            except ValueError:
+                continue
+    except OSError:
+        pass
+    return max_n + 1
+
+
+def _cmd_decision(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Manage architectural decision records (MADR-minimal).
+
+    journal decision add "<title>"   create a new ADR stub
+    journal decision list            show existing ADRs
+    """
+    action = args[0] if args else "list"
+    rest = args[1:]
+    decisions_dir = project_dir / DECISIONS_DIR
+
+    if action == "add":
+        title = " ".join(rest).strip()
+        if not title:
+            emit(make_result("journal-decision", Status.FAIL,
+                             message='Usage: journal decision add "<title>"'),
+                 OutputFormat(output_format))
+            return
+        try:
+            decisions_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            emit(make_result("journal-decision-add", Status.FAIL,
+                             message=f"Could not create {DECISIONS_DIR}: {e}"),
+                 OutputFormat(output_format))
+            return
+
+        n = _next_decision_number(decisions_dir)
+        slug = _slugify(title)
+        path = decisions_dir / f"{n:04d}-{slug}.md"
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        path.write_text(
+            _MADR_TEMPLATE.format(n=n, title=title, date=date),
+            encoding="utf-8",
+        )
+
+        # Log the decision creation to the journal so it surfaces in done/state.md.
+        # Use no_export so we don't double-regenerate the dashboard.
+        try:
+            _cmd_log(
+                project_dir,
+                f"decision: ADR {n:04d} — {title} ({path.relative_to(project_dir)})",
+                "json",
+                auto_export=False,
+            )
+        except Exception:
+            pass
+
+        emit(make_result(
+            "journal-decision-add",
+            Status.PASS,
+            message=f"Created ADR {n:04d}: {title}",
+            details={
+                "path": str(path),
+                "number": n,
+                "slug": slug,
+                "title": title,
+            },
+        ), OutputFormat(output_format))
+
+    elif action == "list":
+        if not decisions_dir.exists():
+            emit(make_result("journal-decision-list", Status.INFO,
+                             message="No decisions recorded yet.",
+                             details={"decisions": [], "dir": str(decisions_dir)}),
+                 OutputFormat(output_format))
+            return
+        decisions = []
+        for f in sorted(decisions_dir.glob("[0-9][0-9][0-9][0-9]-*.md")):
+            try:
+                first_line = f.read_text(encoding="utf-8").splitlines()[0]
+                title = first_line.lstrip("# ").strip()
+            except (OSError, IndexError):
+                title = f.stem
+            decisions.append({
+                "file": str(f.relative_to(project_dir)),
+                "title": title,
+            })
+        emit(make_result("journal-decision-list", Status.INFO,
+                         message=f"{len(decisions)} ADR(s)",
+                         details={"decisions": decisions, "dir": str(decisions_dir)}),
+             OutputFormat(output_format))
+
+    else:
+        emit(make_result("journal-decision", Status.FAIL,
+                         message=f"Unknown action: {action}. Use add|list."),
+             OutputFormat(output_format))
+
+
 # --- CLI dispatcher ---
 
 def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str,
@@ -1546,6 +1756,8 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         _cmd_export_summary(pd, output_format)
     elif subcommand == "init-agents":
         _cmd_init_agents(pd, output_format)
+    elif subcommand == "decision":
+        _cmd_decision(pd, args, output_format)
     else:
         emit(make_result(
             "journal",

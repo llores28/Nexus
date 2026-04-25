@@ -194,6 +194,7 @@ def init_cmd(ctx, output_format, upgrade, refresh, template, project_dir):
 @click.argument("subcommand", type=click.Choice([
     "session-start", "session-end", "log", "status", "diff", "export",
     "setup-hooks", "next", "blocker", "export-summary", "init-agents",
+    "decision",
 ]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
