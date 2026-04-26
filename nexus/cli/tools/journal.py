@@ -264,9 +264,20 @@ def _parse_conventional_commit(subject: str) -> Optional[dict]:
     }
 
 
+_LEADING_BRACKET_TAGS_RE = re.compile(r"^(?:\[[^\]]+\]\s+)+")
+
+
 def _classify_done_item(item: str) -> str:
-    """Return Conventional Commit type for a done-list item, or 'other'."""
-    payload = item.split("] ", 1)[-1] if "] " in item else item
+    """Return Conventional Commit type for a done-list item, or 'other'.
+
+    Strips any number of leading `[tag]` prefixes before parsing — covers the
+    standard `[YYYY-MM-DD Sn branch]` date prefix as well as inline tags like
+    `[backfill]` that `_backfill_commits` writes. Without this, a backfilled
+    entry like `[2026-04-25 S1 main] [backfill] git commit: feat: foo` falls
+    through to "Other" because the CC regex requires `feat|fix|...` to start
+    the line.
+    """
+    payload = _LEADING_BRACKET_TAGS_RE.sub("", item).strip()
     parsed = _parse_conventional_commit(payload)
     return parsed["type"] if parsed else "other"
 
@@ -435,10 +446,19 @@ def _diff_mtimes(baseline: dict[str, float], project_dir: Path) -> list[str]:
 
 def _append_daily_journal(project_dir: Path, message: str, branch: Optional[str],
                           session_n: int, when: Optional[datetime] = None) -> Optional[Path]:
-    """Append an entry to .nexus/journal/YYYY-MM/DD.md.
+    """Append an entry to .nexus/journal/YYYY-MM/DD.md (idempotent).
 
     The daily file is the system of record — state.json["done"] is a rolling
     buffer (MAX_DONE_KEEP), but daily files are append-only and never trimmed.
+
+    Idempotent: if the exact line is already present in the file, this is a
+    no-op. Backfill writes the commit's authored time as `when`, so two
+    backfill passes produce byte-identical lines and the second is silently
+    skipped — preventing the duplicate-entry pattern observed in the wild
+    after running `journal health refresh` more than once. The dedup is
+    line-level and exact; cosmetic differences (trailing whitespace, etc.)
+    are not collapsed.
+
     Returns the path written to (or None on failure).
     """
     now = when or datetime.now(timezone.utc)
@@ -458,6 +478,15 @@ def _append_daily_journal(project_dir: Path, message: str, branch: Optional[str]
                 f"# {now.strftime('%Y-%m-%d')}\n\n_Append-only journal · entries from `nexus journal` CLI._\n\n",
                 encoding="utf-8",
             )
+        else:
+            # Idempotent skip: if this exact line already exists, don't append.
+            # Cheap because daily files cap at one day of activity.
+            try:
+                existing = daily_path.read_text(encoding="utf-8")
+                if line in existing:
+                    return daily_path
+            except (OSError, UnicodeDecodeError):
+                pass  # fall through to append; better a possible dupe than a crash
         with daily_path.open("a", encoding="utf-8") as f:
             f.write(line)
         return daily_path
