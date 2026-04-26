@@ -7,6 +7,7 @@ import ipaddress
 import json
 import os
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Optional
@@ -154,16 +155,57 @@ _SECRET_PATTERNS = [
     re.compile(r"(?i)postgres(ql)?://[^\s]+:[^\s]+@"),         # Postgres connection string
 ]
 
+# Loose `name = value` patterns where the value alone may be a placeholder
+# rather than a real secret. Indices into _SECRET_PATTERNS.
+_LOOSE_PATTERN_INDICES = {0, 1, 2}
+
+# Values that are obviously not real secrets: env-var passthrough syntax,
+# template/example placeholders. Strict patterns (AWS/Stripe/OpenAI literal
+# tokens) never match these forms, so this filter is only consulted for the
+# loose name=value patterns above.
+_PLACEHOLDER_VALUE_RE = re.compile(
+    r"""^(?:
+        \$\{[^}]+\}                # ${VAR}
+      | \$[A-Z_][A-Z0-9_]*         # $VAR
+      | <[^>]+>                    # <placeholder>
+      | "(?:\$\{[^}]+\}|<[^>]+>|\.{2,}|)"   # quoted placeholder / empty
+      | '(?:\$\{[^}]+\}|<[^>]+>|\.{2,}|)'
+      | sk-(?:ant-|or-)?\.{2,}     # sk-..., sk-ant-..., sk-or-...
+      | \.{2,}                     # bare ... or longer
+      | (?:your|my|some|example|placeholder|changeme|todo)[\w_-]*
+      | x{3,}                      # xxx, xxxxx
+    )\s*(?:\#.*)?$""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _value_after_assign(line: str) -> Optional[str]:
+    """Return the value after the first `=` or `:` on a line, stripped."""
+    m = re.search(r"[:=]\s*(.+?)\s*(?:#.*)?$", line)
+    return m.group(1).strip() if m else None
+
+
+def _is_placeholder_value(line: str) -> bool:
+    """True when the assigned value is clearly a template/passthrough, not a real secret."""
+    value = _value_after_assign(line)
+    if value is None:
+        return False
+    return bool(_PLACEHOLDER_VALUE_RE.match(value))
+
 
 def scan_text_for_secrets(text: str) -> list[dict]:
     """
     Scan text for common secret patterns.
     Returns list of findings with line number and pattern name — never the actual secret.
+    Skips findings where the value is an env-var passthrough or template placeholder
+    (e.g. `KEY=${KEY}`, `KEY=sk-...`, `KEY=<your-key>`).
     """
     findings = []
     for line_num, line in enumerate(text.splitlines(), 1):
-        for pattern in _SECRET_PATTERNS:
+        for idx, pattern in enumerate(_SECRET_PATTERNS):
             if pattern.search(line):
+                if idx in _LOOSE_PATTERN_INDICES and _is_placeholder_value(line):
+                    continue
                 findings.append({
                     "line": line_num,
                     "pattern": pattern.pattern[:60],
@@ -187,6 +229,42 @@ def sanitize_output(text: str) -> str:
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     return text
+
+
+# --- Config-file filtering for secret scanners ---
+#
+# Out-of-scope file classes for leak prevention:
+#   - gitignored: secrets in untracked files can't leak via commits.
+#   - template:  .env.example / .env.template etc. carry placeholder values
+#                by convention (`KEY=change_me`, `KEY=<your-key>`).
+# Both filters apply to the auto-glob path of secret scanners; staged-files
+# scanning is unaffected because that's the actual leak hot path.
+
+_TEMPLATE_SUFFIXES = (".example", ".template", ".sample", ".dist", ".tmpl")
+
+
+def is_template_file(fpath: Path) -> bool:
+    """True if filename indicates a placeholder/template (e.g. .env.example)."""
+    name = fpath.name.lower()
+    return any(name.endswith(s) or s in name for s in _TEMPLATE_SUFFIXES)
+
+
+def gitignored_files(project_dir: Path, paths: list[Path]) -> set[str]:
+    """Return relative POSIX paths that git considers ignored. Empty set if no
+    git or no matches. Uses argv rather than `--stdin` (the latter has a
+    flushing bug on Windows git ≤2.40 where exit/stdout disagree)."""
+    if not paths:
+        return set()
+    try:
+        rel = [Path(p).relative_to(project_dir).as_posix() for p in paths]
+        result = subprocess.run(
+            ["git", "check-ignore", *rel],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        # exit 0: matches; exit 1: no matches (not an error). stdout = matched paths.
+        return {ln.strip().replace("\\", "/") for ln in result.stdout.splitlines() if ln.strip()}
+    except (subprocess.SubprocessError, OSError):
+        return set()
 
 
 # --- Audit Logging ---

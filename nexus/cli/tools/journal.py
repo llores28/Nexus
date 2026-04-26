@@ -294,7 +294,11 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _should_roll_session(state: dict, git_root: Optional[Path]) -> tuple[bool, str]:
+def _should_roll_session(
+    state: dict,
+    git_root: Optional[Path],
+    now: Optional[datetime] = None,
+) -> tuple[bool, str]:
     """Decide whether the current session is stale and should auto-close.
 
     Triggers (any one):
@@ -302,12 +306,14 @@ def _should_roll_session(state: dict, git_root: Optional[Path]) -> tuple[bool, s
       - UTC date has changed since session start
       - branch changed since session start (when git is available)
 
+    `now` is injectable for deterministic tests; defaults to current UTC time.
     Returns (should_roll, reason). Reason is empty when not rolling.
     """
     start_dt = _parse_iso(state.get("session_start_time"))
     if start_dt is None:
         return False, ""
-    now = datetime.now(timezone.utc)
+    if now is None:
+        now = datetime.now(timezone.utc)
     hours_idle = (now - start_dt).total_seconds() / 3600.0
     if hours_idle >= SESSION_IDLE_HOURS:
         return True, f"idle {hours_idle:.1f}h"
@@ -1930,6 +1936,7 @@ def _cmd_health(project_dir: Path, args: tuple, output_format: str) -> None:
         state = _load_state(project_dir)
         backfilled = _backfill_commits(project_dir, state, diagnosis.get("missing_commits", []))
         if backfilled:
+            _save_state(project_dir, state)
             actions.append(f"backfilled {backfilled} commit(s) into done + daily files")
         # Regenerate dashboard + summary either way (catches stale-but-no-drift case).
         try:
