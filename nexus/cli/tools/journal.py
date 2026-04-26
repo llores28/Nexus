@@ -42,6 +42,7 @@ DAILY_JOURNAL_DIR = ".nexus/journal"  # append-only system of record (Phase 3)
 DECISIONS_DIR = "docs/decisions"  # MADR-style ADRs (committed by default)
 DIFFS_DIR = ".cache/bs-cli/diffs"
 HOOK_LOG = ".cache/bs-cli/hook.log"
+HOOK_LOG_MAX_BYTES = 1 * 1024 * 1024  # 1 MB cap; rotate to hook.log.1 on overflow
 
 # Cross-tool integration files (managed by `journal init-agents`)
 AGENTS_MD = "AGENTS.md"
@@ -2103,10 +2104,33 @@ def _cmd_blame(project_dir: Path, args: tuple, output_format: str) -> None:
 
 # --- CLI dispatcher ---
 
+def _rotate_hook_log_if_needed(project_dir: Path) -> None:
+    """Rotate .cache/bs-cli/hook.log to .1 when it exceeds HOOK_LOG_MAX_BYTES.
+
+    The hook log is appended to by the git post-commit/pre-push hooks (stderr
+    redirection). Without rotation, repeated hook failures could grow the file
+    unbounded. This helper is best-effort; failure is silent.
+    """
+    log_path = project_dir / HOOK_LOG
+    try:
+        if not log_path.exists() or log_path.stat().st_size < HOOK_LOG_MAX_BYTES:
+            return
+    except OSError:
+        return
+    backup = log_path.with_suffix(log_path.suffix + ".1")
+    try:
+        if backup.exists():
+            backup.unlink()
+        log_path.rename(backup)
+    except OSError:
+        pass
+
+
 def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: str,
                 no_export: bool = False, force: bool = False) -> None:
     """Dispatch journal subcommands."""
     pd = Path(project_dir).resolve()
+    _rotate_hook_log_if_needed(pd)
 
     if subcommand == "session-start":
         _cmd_session_start(pd, output_format)

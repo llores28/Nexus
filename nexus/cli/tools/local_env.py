@@ -24,7 +24,7 @@ from typing import Any, Optional
 from nexus.cli.utils import (
     OutputFormat, Status, Severity, emit, make_result, truncate_output,
 )
-from nexus.cli.security import validate_path, scan_text_for_secrets
+from nexus.cli.security import scan_text_for_secrets
 
 
 # --- Project detection for Dockerfile generation ---

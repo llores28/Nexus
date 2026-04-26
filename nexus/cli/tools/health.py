@@ -588,19 +588,35 @@ def _check_dependencies(project_dir: Path) -> dict[str, Any]:
 
 
 def run_security(project_dir: Path) -> dict[str, Any]:
-    """Tier 2: Security and configuration health."""
+    """Tier 2: Security and configuration health.
+
+    Status hierarchy (most → least severe): fail > warn > pass.
+      - fail: any high-severity issue, OR any secret found.
+      - warn: any other issue.
+      - pass: clean.
+
+    Note: secret findings have shape {file, line, pattern, preview} and lack
+    a `severity` field, so they were previously invisible to the high-count
+    sum and the score reported "warn" while the dashboard penalty already
+    docked points. Now `secrets_found > 0` directly forces fail.
+    """
     gitignore = _check_gitignore(project_dir)
     codeiumignore = _check_codeiumignore(project_dir)
     secrets = _check_secrets(project_dir)
     deps = _check_dependencies(project_dir)
 
-    all_issues = (
-        gitignore["issues"] + codeiumignore["issues"]
-        + secrets.get("findings", []) + deps["issues"]
-    )
+    issue_lists = [gitignore["issues"], codeiumignore["issues"], deps["issues"]]
+    all_issues = [i for lst in issue_lists for i in lst]
     high_count = sum(1 for i in all_issues if i.get("severity") == "high")
+    secrets_found = secrets.get("secrets_found", 0)
 
-    status = "fail" if high_count > 0 else ("warn" if all_issues else "pass")
+    if high_count > 0 or secrets_found > 0:
+        status = "fail"
+    elif all_issues or secrets.get("files_skipped"):
+        # any non-high issue, or skipped files (informational) → warn
+        status = "warn" if all_issues else "pass"
+    else:
+        status = "pass"
 
     return {
         "status": status,

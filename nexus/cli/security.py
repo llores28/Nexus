@@ -23,7 +23,7 @@ def validate_path(path_str: str, project_root: Optional[Path] = None) -> Path:
     Returns resolved Path if safe, raises ValueError otherwise.
     """
     if project_root is None:
-        from bootstrap.cli.utils import find_project_root
+        from nexus.cli.utils import find_project_root
         project_root = find_project_root()
 
     project_root = project_root.resolve()
@@ -240,13 +240,32 @@ def sanitize_output(text: str) -> str:
 # Both filters apply to the auto-glob path of secret scanners; staged-files
 # scanning is unaffected because that's the actual leak hot path.
 
+# Template-file suffix detection. We match BOTH:
+#   - filename ends with the suffix:        ".env.example"
+#   - filename has the suffix as a discrete segment, then more text:
+#                                           ".env.template.json"  (rare but valid)
+# We deliberately do NOT match the suffix as a free substring (the previous
+# implementation did `s in name`, which falsely matched `redistribute.json`
+# for `.dist`, `samplefoo.txt` for `.sample`, etc.).
 _TEMPLATE_SUFFIXES = (".example", ".template", ".sample", ".dist", ".tmpl")
 
 
 def is_template_file(fpath: Path) -> bool:
-    """True if filename indicates a placeholder/template (e.g. .env.example)."""
+    """True if filename indicates a placeholder/template (e.g. .env.example).
+
+    Matches `.example` / `.template` / `.sample` / `.dist` / `.tmpl` as a
+    filename segment — either at the end of the name, or followed by another
+    extension (`.env.template.json`). Rejects substring-only matches like
+    `redistribute.json` (was a false positive in the prior implementation).
+    """
     name = fpath.name.lower()
-    return any(name.endswith(s) or s in name for s in _TEMPLATE_SUFFIXES)
+    for suffix in _TEMPLATE_SUFFIXES:
+        if name.endswith(suffix):
+            return True
+        # `.template` followed by another extension (e.g. .env.template.json)
+        if f"{suffix}." in name:
+            return True
+    return False
 
 
 def gitignored_files(project_dir: Path, paths: list[Path]) -> set[str]:
@@ -271,6 +290,31 @@ def gitignored_files(project_dir: Path, paths: list[Path]) -> set[str]:
 
 _AUDIT_DIR = Path(".cache") / "bs-cli"
 _AUDIT_FILE = _AUDIT_DIR / "audit.jsonl"
+_AUDIT_MAX_BYTES = 5 * 1024 * 1024  # 5 MB cap; rotate to audit.jsonl.1 on overflow
+
+
+def _rotate_log_if_needed(path: Path, max_bytes: int) -> None:
+    """Rotate `path` to `path.1` when it exceeds `max_bytes`. Keeps one backup.
+
+    Best-effort and silent: if rotation fails (permission, race), the caller
+    will just keep appending to the original file rather than crash. Safe to
+    call before every append.
+    """
+    try:
+        if not path.exists():
+            return
+        if path.stat().st_size < max_bytes:
+            return
+    except OSError:
+        return
+
+    backup = path.with_suffix(path.suffix + ".1")
+    try:
+        if backup.exists():
+            backup.unlink()
+        path.rename(backup)
+    except OSError:
+        pass  # Can't rotate; appending will continue (file may grow until next call)
 
 
 def audit_log(
@@ -283,12 +327,15 @@ def audit_log(
     """
     Append an audit entry to .cache/bs-cli/audit.jsonl.
     Sanitizes args to remove potential secret values.
+    Rotates to audit.jsonl.1 when the file exceeds 5 MB so unbounded CLI
+    usage doesn't accumulate without bound.
     """
     root = project_root or Path.cwd()
     audit_path = root / _AUDIT_FILE
 
     try:
         audit_path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_log_if_needed(audit_path, _AUDIT_MAX_BYTES)
 
         entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
