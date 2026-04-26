@@ -23,6 +23,7 @@ from nexus.cli.utils import (
 )
 from nexus.cli.security import (
     validate_path, scan_text_for_secrets, sanitize_output,
+    is_template_file, gitignored_files,
 )
 
 
@@ -342,20 +343,27 @@ def _check_ports(project_dir: Path) -> dict[str, Any]:
 # --- secrets-scan subcommand ---
 
 def _secrets_scan(project_dir: Path, args: tuple) -> dict[str, Any]:
-    """Scan for leaked secrets in git diff, staged files, or specified paths."""
+    """Scan for leaked secrets in git diff, staged files, or specified paths.
+
+    The staged-files path always scans (that's the leak-prevention hot path).
+    The auto-glob path skips files that are gitignored (local-only config) or
+    look like template files (.env.example etc.) — those are out-of-scope for
+    leak prevention.
+    """
     all_findings: list[dict] = []
 
     # Default: scan staged + recent changes
     scan_targets: list[Path] = []
+    skipped: list[dict] = []
 
     if args:
-        # Scan specific paths
+        # Scan specific paths — always honor explicit user intent.
         for a in args:
             p = validate_path(a, project_dir)
             if p.exists():
                 scan_targets.append(p)
     else:
-        # Try git diff (staged)
+        # Staged files (always scanned — these are about to be committed).
         try:
             result = subprocess.run(
                 ["git", "diff", "--cached", "--name-only"],
@@ -369,15 +377,28 @@ def _secrets_scan(project_dir: Path, args: tuple) -> dict[str, Any]:
         except (subprocess.SubprocessError, OSError):
             pass
 
-        # Also scan common config files
+        # Auto-glob common config files. These get filtered: skip gitignored
+        # (local-only secrets) and template files (placeholder values).
         config_patterns = [
             ".env", ".env.*", "*.config.js", "*.config.ts",
             "docker-compose*.yml", "docker-compose*.yaml",
         ]
+        globbed: list[Path] = []
         for pattern in config_patterns:
             for fpath in project_dir.glob(pattern):
-                if fpath.is_file() and fpath not in scan_targets:
-                    scan_targets.append(fpath)
+                if fpath.is_file() and fpath not in scan_targets and fpath not in globbed:
+                    globbed.append(fpath)
+
+        ignored = gitignored_files(project_dir, globbed)
+        for fpath in globbed:
+            rel = fpath.relative_to(project_dir).as_posix()
+            if rel in ignored:
+                skipped.append({"file": rel, "reason": "gitignored"})
+                continue
+            if is_template_file(fpath):
+                skipped.append({"file": rel, "reason": "template"})
+                continue
+            scan_targets.append(fpath)
 
     # Scan each target
     for fpath in scan_targets[:50]:  # Cap at 50 files
@@ -392,6 +413,7 @@ def _secrets_scan(project_dir: Path, args: tuple) -> dict[str, Any]:
 
     return {
         "files_scanned": len(scan_targets),
+        "files_skipped": skipped,
         "secrets_found": len(all_findings),
         "findings": all_findings[:50],  # Never more than 50
         "status": "fail" if all_findings else "pass",

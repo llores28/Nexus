@@ -25,7 +25,10 @@ from nexus.cli.utils import (
     truncate_output,
     find_project_root,
 )
-from nexus.cli.security import scan_text_for_secrets, validate_path
+from nexus.cli.security import (
+    scan_text_for_secrets, validate_path,
+    is_template_file, gitignored_files,
+)
 
 
 # --- Expected Nexus Components ---
@@ -503,20 +506,34 @@ def _check_codeiumignore(project_dir: Path) -> dict[str, Any]:
 
 
 def _check_secrets(project_dir: Path) -> dict[str, Any]:
-    """Quick secrets scan on config files."""
+    """Quick secrets scan on config files. Skips gitignored (local-only) and
+    template (.example/.template) files since neither can leak via commit."""
     all_findings: list[dict] = []
     files_scanned = 0
+    files_skipped: list[dict] = []
 
     config_patterns = [
         ".env", ".env.*", "*.config.js", "*.config.ts",
         "docker-compose*.yml", "docker-compose*.yaml",
     ]
 
-    scan_targets: list[Path] = []
+    globbed: list[Path] = []
     for pattern in config_patterns:
         for fpath in project_dir.glob(pattern):
-            if fpath.is_file():
-                scan_targets.append(fpath)
+            if fpath.is_file() and fpath not in globbed:
+                globbed.append(fpath)
+
+    ignored = gitignored_files(project_dir, globbed)
+    scan_targets: list[Path] = []
+    for fpath in globbed:
+        rel = fpath.relative_to(project_dir).as_posix()
+        if rel in ignored:
+            files_skipped.append({"file": rel, "reason": "gitignored"})
+            continue
+        if is_template_file(fpath):
+            files_skipped.append({"file": rel, "reason": "template"})
+            continue
+        scan_targets.append(fpath)
 
     for fpath in scan_targets[:30]:
         files_scanned += 1
@@ -533,6 +550,7 @@ def _check_secrets(project_dir: Path) -> dict[str, Any]:
     return {
         "status": status,
         "files_scanned": files_scanned,
+        "files_skipped": files_skipped,
         "secrets_found": len(all_findings),
         "findings": all_findings[:20],
     }

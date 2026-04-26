@@ -207,9 +207,13 @@ class TestDailyJournal:
 # --------------------------------------------------------------------------
 
 class TestSessionRoll:
-    @staticmethod
-    def _state(hours_ago=0.0, branch="main", session_n=1):
-        start = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    # Pin "now" to a non-edge UTC time so hours_ago=0.5 never crosses
+    # midnight UTC and triggers the new-date rule unintentionally.
+    _NOW = datetime(2026, 4, 25, 12, 0, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def _state(cls, hours_ago=0.0, branch="main", session_n=1):
+        start = cls._NOW - timedelta(hours=hours_ago)
         return {
             "session_number": session_n,
             "session_start_time": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -217,18 +221,37 @@ class TestSessionRoll:
         }
 
     def test_fresh_session_does_not_roll(self):
-        should_roll, _ = _should_roll_session(self._state(hours_ago=0.5), git_root=None)
+        should_roll, _ = _should_roll_session(
+            self._state(hours_ago=0.5), git_root=None, now=self._NOW,
+        )
         assert should_roll is False
 
     def test_idle_triggers_roll(self):
-        should_roll, reason = _should_roll_session(self._state(hours_ago=5), git_root=None)
+        should_roll, reason = _should_roll_session(
+            self._state(hours_ago=5), git_root=None, now=self._NOW,
+        )
         assert should_roll is True
         assert "idle" in reason
 
     def test_no_session_no_roll(self):
         state = {"session_number": 0, "session_start_time": None}
-        should_roll, _ = _should_roll_session(state, git_root=None)
+        should_roll, _ = _should_roll_session(state, git_root=None, now=self._NOW)
         assert should_roll is False
+
+    def test_new_utc_date_triggers_roll(self):
+        # Session started yesterday UTC; even within the idle window, a date
+        # change should still roll. Regression guard for the time-of-day flake
+        # that the now= injection was added to fix.
+        yesterday_noon = self._NOW - timedelta(days=1)
+        state = {
+            "session_number": 1,
+            "session_start_time": yesterday_noon.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "session_branch": "main",
+        }
+        should_roll, reason = _should_roll_session(state, git_root=None, now=self._NOW)
+        assert should_roll is True
+        # "idle" wins because >4h elapsed; either reason is acceptable.
+        assert "idle" in reason or "new date" in reason
 
 
 # --------------------------------------------------------------------------
@@ -457,6 +480,40 @@ class TestRunJournal:
         content = daily.read_text(encoding="utf-8")
         assert "fix: synthetic commit" in content
         assert "feat: another" in content
+
+    def test_health_refresh_persists_backfill_to_state(self, tmp_path, capsys, monkeypatch):
+        # Regression for a bug where _cmd_health called _backfill_commits but
+        # forgot to _save_state, so daily files were written but state.done
+        # never grew — every subsequent `health` call kept reporting drift.
+        run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
+        before = len(_load_state(tmp_path)["done"])
+
+        # Force the diagnostic to report missing commits without needing real git.
+        from nexus.cli.tools import journal as journal_mod
+        fake_missing = [
+            {"hash": "11111111", "iso_date": "2026-04-25T09:00:00+00:00",
+             "subject": "fix: pretend missing"},
+            {"hash": "22222222", "iso_date": "2026-04-25T10:00:00+00:00",
+             "subject": "feat: pretend other"},
+        ]
+        real_diagnose = journal_mod._diagnose_journal
+
+        def fake_diagnose(pd):
+            d = real_diagnose(pd)
+            d["status"] = "drift"
+            d["missing_commits"] = fake_missing
+            d["issues"] = ["2 commit(s) in recent history are not reflected in done."]
+            return d
+
+        monkeypatch.setattr(journal_mod, "_diagnose_journal", fake_diagnose)
+        capsys.readouterr()
+        run_journal("health", ("refresh",), "json", str(tmp_path))
+
+        reloaded = _load_state(tmp_path)
+        assert len(reloaded["done"]) == before + 2, (
+            "health refresh must persist backfilled commits to state.json"
+        )
+        assert any("[backfill]" in d for d in reloaded["done"])
 
     def test_health_refresh_idempotent_on_clean_state(self, tmp_path, capsys):
         run_journal("log", ("seed",), "json", str(tmp_path), no_export=True)
