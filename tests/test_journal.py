@@ -71,6 +71,34 @@ class TestConventionalCommitParser:
     def test_classify_other_when_no_match(self):
         assert _classify_done_item("[2026-04-25 S2 main] random") == "other"
 
+    def test_classify_strips_backfill_tag(self):
+        # Regression: `_backfill_commits` writes entries as
+        # `[YYYY-MM-DD Sn branch] [backfill] git commit: feat: foo`.
+        # The classifier used to do split("] ", 1)[-1] which only stripped
+        # ONE leading bracket, leaving `[backfill] git commit: feat: foo`
+        # to fail the CC regex and fall through to "Other". With multi-tag
+        # stripping, all backfilled entries classify by their actual CC type.
+        item = "[2026-04-25 S1 main] [backfill] git commit: feat: alpha"
+        assert _classify_done_item(item) == "feat"
+        item2 = "[2026-04-25 S1 main] [backfill] git commit: fix: beta"
+        assert _classify_done_item(item2) == "fix"
+        item3 = "[2026-04-25 S1 main] [backfill] git commit: docs: gamma"
+        assert _classify_done_item(item3) == "docs"
+
+    def test_classify_strips_backfill_in_grouping(self):
+        # Same fix surfaced through the grouping path.
+        items = [
+            "[2026-04-25 S1 main] [backfill] git commit: feat: A",
+            "[2026-04-25 S1 main] [backfill] git commit: fix: B",
+            "[2026-04-25 S1 main] git commit: feat: C",
+        ]
+        groups = dict(_group_done_by_type(items))
+        assert "Features" in groups and len(groups["Features"]) == 2
+        assert "Fixes" in groups and len(groups["Fixes"]) == 1
+        assert "Other" not in groups, (
+            "no entry should land in Other once [backfill] is stripped"
+        )
+
 
 # --------------------------------------------------------------------------
 # Grouping
@@ -200,6 +228,36 @@ class TestDailyJournal:
         content = path.read_text(encoding="utf-8")
         assert "[None]" not in content
         assert "headless" in content
+
+    def test_append_is_idempotent_for_identical_line(self, tmp_path):
+        # Regression: running `journal health refresh` twice used to write
+        # duplicate entries to the same daily file (backfill passes the
+        # commit's authored `when`, so two passes produce byte-identical
+        # lines). The second append is now a no-op.
+        when = datetime(2026, 4, 25, 12, 0, 0, tzinfo=timezone.utc)
+        path1 = _append_daily_journal(tmp_path, "feat: same commit", "main", 1, when)
+        path2 = _append_daily_journal(tmp_path, "feat: same commit", "main", 1, when)
+        path3 = _append_daily_journal(tmp_path, "feat: same commit", "main", 1, when)
+        assert path1 == path2 == path3
+        content = path1.read_text(encoding="utf-8")
+        assert content.count("feat: same commit") == 1, (
+            "identical line was written more than once — daily-file dedup broken"
+        )
+
+    def test_append_distinct_lines_still_appended(self, tmp_path):
+        # The dedup must NOT collapse legitimately distinct entries (different
+        # message, time, session, or branch).
+        when = datetime(2026, 4, 25, 12, 0, 0, tzinfo=timezone.utc)
+        _append_daily_journal(tmp_path, "feat: A", "main", 1, when)
+        _append_daily_journal(tmp_path, "feat: B", "main", 1, when)  # different msg
+        _append_daily_journal(tmp_path, "feat: A", "main", 2, when)  # different session
+        path = _append_daily_journal(
+            tmp_path, "feat: A", "feature-x", 1, when,                # different branch
+        )
+        content = path.read_text(encoding="utf-8")
+        # A appears 3 times (S1/main, S2/main, S1/feature-x); B once.
+        assert content.count("feat: A") == 3
+        assert content.count("feat: B") == 1
 
 
 # --------------------------------------------------------------------------
