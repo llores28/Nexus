@@ -85,6 +85,7 @@ coverage.xml
 
 # pytest
 .pytest_cache/
+.benchmarks/
 
 # mypy
 .mypy_cache/

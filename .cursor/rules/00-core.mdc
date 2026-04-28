@@ -1,0 +1,23 @@
+---
+description: Project conventions and constraints (managed by Nexus)
+alwaysApply: true
+---
+
+<!-- nexus: profile=754255363160 generator=cursor.00-core nexus_version=0.2.0 -->
+
+# ws-bootstrap-master
+
+**Tier:** team.
+**Stack:** python.
+
+## Conventions
+
+- No secrets in output, commits, logs, or generated code. Reference environment variables; never hardcode credentials.
+- Validate filesystem paths and URLs at trust boundaries before use. Never run untrusted user input through a shell.
+- Don't invent APIs, commands, or file paths. Mark uncertainty explicitly (e.g. `TODO(verify)`).
+- Prefer editing existing files over creating new ones. Don't proliferate scaffolding files.
+- Don't add backwards-compatibility shims, dead-code comments, or unused re-exports for code that no longer exists. _[warn]_
+- New code paths must have at least one test. Bug fixes ship with a regression test.
+- Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, ...) so the journal can group them.
+
+Run `nexus doctor` to verify rules and stack are in sync.
