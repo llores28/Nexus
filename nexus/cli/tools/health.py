@@ -74,9 +74,12 @@ EXPECTED_WORKFLOWS = [
 EXPECTED_CROSS_IDE = [
     "AGENTS.md",
     "CLAUDE.md",
-    ".cursorrules",
+    ".cursor/rules/00-core.mdc",
     ".github/copilot-instructions.md",
 ]
+
+# v0.2 introduced `.nexus/profile.json` as the single source of truth.
+PROFILE_REL = ".nexus/profile.json"
 
 RULE_MAX_SIZE_BYTES = 12_000  # 12KB limit per rule file
 
@@ -103,11 +106,14 @@ def _check_rules(project_dir: Path) -> dict[str, Any]:
     found_rules: list[str] = []
 
     if not rules_dir.is_dir():
+        # Windsurf rules are optional v0.3 surface — absence is informational,
+        # not a failure. The v0.2 cross-IDE generators (AGENTS.md, .cursor/rules,
+        # copilot-instructions) are checked separately.
         return {
-            "status": "fail",
+            "status": "pass",
             "found": 0,
-            "expected": len(EXPECTED_RULES),
-            "issues": [{"severity": "high", "message": ".windsurf/rules/ directory not found"}],
+            "expected": 0,
+            "issues": [{"severity": "info", "message": ".windsurf/rules/ not present (optional)"}],
         }
 
     # Discover all rule files
@@ -182,10 +188,10 @@ def _check_skills(project_dir: Path) -> dict[str, Any]:
 
     if not skills_dir.is_dir():
         return {
-            "status": "fail",
+            "status": "pass",
             "found": 0,
-            "expected": len(EXPECTED_SKILLS),
-            "issues": [{"severity": "high", "message": ".windsurf/skills/ directory not found"}],
+            "expected": 0,
+            "issues": [{"severity": "info", "message": ".windsurf/skills/ not present (optional)"}],
         }
 
     # Discover all skill folders
@@ -256,10 +262,10 @@ def _check_workflows(project_dir: Path) -> dict[str, Any]:
 
     if not wf_dir.is_dir():
         return {
-            "status": "fail",
+            "status": "pass",
             "found": 0,
-            "expected": len(EXPECTED_WORKFLOWS),
-            "issues": [{"severity": "high", "message": ".windsurf/workflows/ directory not found"}],
+            "expected": 0,
+            "issues": [{"severity": "info", "message": ".windsurf/workflows/ not present (optional)"}],
         }
 
     # Discover all workflow files
@@ -404,8 +410,36 @@ def _check_bootstrap_templates(project_dir: Path) -> dict[str, Any]:
     }
 
 
+def _check_profile(project_dir: Path) -> dict[str, Any]:
+    """Validate `.nexus/profile.json` is present and parseable (v0.2+ SoT)."""
+    path = project_dir / PROFILE_REL
+    if not path.exists():
+        return {
+            "status": "warn",
+            "issues": [{
+                "severity": "medium",
+                "message": (
+                    f"{PROFILE_REL} not found -- run `nexus profile detect` to create it. "
+                    "(Old projects can run `nexus init --upgrade` to migrate.)"
+                ),
+            }],
+        }
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return {
+            "status": "fail",
+            "issues": [{
+                "severity": "high",
+                "message": f"{PROFILE_REL} is unreadable or malformed: {type(e).__name__}",
+            }],
+        }
+    return {"status": "pass", "issues": []}
+
+
 def run_components(project_dir: Path) -> dict[str, Any]:
     """Tier 1: Full component inventory and integrity check."""
+    profile = _check_profile(project_dir)
     rules = _check_rules(project_dir)
     skills = _check_skills(project_dir)
     workflows = _check_workflows(project_dir)
@@ -413,7 +447,7 @@ def run_components(project_dir: Path) -> dict[str, Any]:
     templates = _check_bootstrap_templates(project_dir)
 
     all_issues = (
-        rules["issues"] + skills["issues"] + workflows["issues"]
+        profile["issues"] + rules["issues"] + skills["issues"] + workflows["issues"]
         + cross_ide["issues"] + templates["issues"]
     )
     high_count = sum(1 for i in all_issues if i["severity"] == "high")
@@ -428,6 +462,7 @@ def run_components(project_dir: Path) -> dict[str, Any]:
 
     return {
         "status": status,
+        "profile": profile,
         "rules": rules,
         "skills": skills,
         "workflows": workflows,
@@ -819,12 +854,15 @@ def _calculate_score(components: dict, security: dict, usage: dict) -> int:
     score = 100
     weights = {"high": 10, "medium": 5, "low": 2, "critical": 20}
 
-    # Component issues
-    for section in ["rules", "skills", "workflows", "cross_ide", "templates"]:
+    # Component issues. ``info`` items don't dock the score (they're context,
+    # not problems) — used for "Windsurf surface absent (optional)" notes.
+    for section in ["profile", "rules", "skills", "workflows", "cross_ide", "templates"]:
         section_data = components.get(section, {})
         for issue in section_data.get("issues", []):
-            penalty = weights.get(issue.get("severity", "low"), 2)
-            score -= penalty
+            sev = issue.get("severity", "low")
+            if sev == "info":
+                continue
+            score -= weights.get(sev, 2)
 
     # Security issues
     for section in ["gitignore", "codeiumignore", "dependencies"]:

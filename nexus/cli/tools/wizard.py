@@ -42,12 +42,44 @@ def _ask_choice(prompt: str, choices: list[tuple[str, str]], default_key: str) -
         click.echo(f"  Invalid choice. Pick one of: {', '.join(keys)}")
 
 
-def _interview() -> dict[str, str]:
+def _print_detection_preamble(project_dir: Path) -> None:
+    """Best-effort: show auto-detected stack so the user knows we already saw it.
+
+    Stack questions are NOT asked by the wizard -- the 7 questions below answer
+    *which tier* (governance), which is orthogonal to *what stack*. Detection
+    runs again later when ``nexus profile detect`` is called from init.
+    """
+    try:
+        from nexus.cli.profile import from_detection
+        detected = from_detection(project_dir, tier="fast")
+    except Exception:
+        return
+    if not (detected.languages or detected.frameworks or detected.test_runner):
+        return
+    click.echo("\n  Auto-detected stack:")
+    if detected.languages:
+        click.echo(f"    Languages:        {', '.join(detected.languages)}")
+    if detected.frameworks:
+        click.echo(f"    Frameworks:       {', '.join(detected.frameworks)}")
+    if detected.package_managers:
+        click.echo(f"    Package managers: {', '.join(detected.package_managers)}")
+    if detected.test_runner:
+        click.echo(f"    Test runner:      {detected.test_runner}")
+    if detected.ci:
+        click.echo(f"    CI:               {detected.ci}")
+    click.echo(
+        "\n  (Stack is auto-detected from lockfiles. The questions below choose your TIER.)"
+    )
+
+
+def _interview(project_dir: Path) -> dict[str, str]:
     """Ask the 7 high-signal questions. Returns a dict of answers."""
     click.echo("\n" + "=" * 60)
     click.echo("  Nexus Bootstrap Wizard")
     click.echo("  7 quick questions to recommend the right tier.")
     click.echo("=" * 60)
+
+    _print_detection_preamble(project_dir)
 
     answers: dict[str, str] = {}
 
@@ -224,7 +256,7 @@ def run_wizard(project_dir: Path, output_format: str) -> dict[str, Any]:
         ), OutputFormat(output_format))
         raise click.Abort()
 
-    answers = _interview()
+    answers = _interview(project_dir)
     flags = _compute_flags(answers)
     tier, confidence, rows = _select_tier(flags)
 

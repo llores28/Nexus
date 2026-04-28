@@ -75,9 +75,9 @@ class AuditGroup(click.Group):
 
 
 @click.group(cls=AuditGroup)
-@click.version_option(version="0.1.0", prog_name="nexus")
+@click.version_option(version="0.2.0", prog_name="nexus")
 def cli():
-    """Nexus CLI Toolkit — sniper-agent tools for Cascade."""
+    """Nexus CLI Toolkit — profile-driven cross-IDE generator with drift detection."""
     pass
 
 
@@ -181,13 +181,16 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
               help="Used with --upgrade to also regenerate BOOTSTRAP.md from the current tier template.")
 @click.option("--template", type=click.Choice(["fast", "team", "enterprise"]), default=None,
               help="Skip the wizard and force a specific tier.")
+@click.option("--accept-defaults", "--yes", "-y", "accept_defaults", is_flag=True,
+              help="Auto-confirm interactive prompts (hook install, journal refresh, etc.). For CI/automation.")
 @click.option("--project-dir", default=".", help="Project to initialize.")
 @click.pass_context
-def init_cmd(ctx, output_format, upgrade, refresh, template, project_dir):
+def init_cmd(ctx, output_format, upgrade, refresh, template, accept_defaults, project_dir):
     """Bootstrap (or upgrade) the current project with Nexus."""
     from nexus.cli.tools.init import run_init
     run_init(project_dir=project_dir, output_format=output_format,
-             upgrade=upgrade, refresh=refresh, template=template)
+             upgrade=upgrade, refresh=refresh, template=template,
+             accept_defaults=accept_defaults)
 
 
 @cli.command("journal")
@@ -221,6 +224,44 @@ def supply_chain_cmd(ctx, subcommand, args, output_format, project_dir):
     """Supply chain security scanner — detect compromised packages and IOCs."""
     from nexus.cli.tools.supply_chain import run_supply_chain
     run_supply_chain(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
+
+
+@cli.command("profile")
+@click.argument("subcommand", type=click.Choice(["detect", "show", "set"]))
+@click.argument("args", nargs=-1)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
+@click.option("--project-dir", default=".", help="Project directory.")
+@click.pass_context
+def profile_cmd(ctx, subcommand, args, output_format, project_dir):
+    """Manage the project profile (.nexus/profile.json) -- the source of truth for cross-IDE generation."""
+    from nexus.cli.tools.profile_cmd import run_profile
+    run_profile(subcommand=subcommand, args=args, output_format=output_format, project_dir=project_dir)
+
+
+@cli.command("generate")
+@click.option("--target", "targets", default=None,
+              help="Comma-separated targets (agents_md,claude,cursor,copilot). Default: all.")
+@click.option("--dry-run", is_flag=True, help="Show what would be written without writing.")
+@click.option("--force", is_flag=True, help="Overwrite managed blocks even when no profile change is detected.")
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
+@click.option("--project-dir", default=".", help="Project directory.")
+@click.pass_context
+def generate_cmd(ctx, targets, dry_run, force, output_format, project_dir):
+    """Generate IDE-specific files (AGENTS.md, CLAUDE.md, .cursor/rules/, copilot-instructions) from the profile."""
+    from nexus.cli.tools.generate_cmd import run_generate
+    run_generate(output_format=output_format, project_dir=project_dir,
+                 targets=targets, dry_run=dry_run, force=force)
+
+
+@cli.command("doctor")
+@click.option("--deep", is_flag=True, help="Re-run stack detection and diff against stored profile.")
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
+@click.option("--project-dir", default=".", help="Project directory.")
+@click.pass_context
+def doctor_cmd(ctx, deep, output_format, project_dir):
+    """Check rule drift, version mismatch, missing IDE files, and journal health."""
+    from nexus.cli.tools.doctor import run_doctor
+    run_doctor(output_format=output_format, project_dir=project_dir, deep=deep)
 
 
 if __name__ == "__main__":

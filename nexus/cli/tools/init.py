@@ -94,6 +94,57 @@ def _persist_tier(project_dir: Path, selection: dict[str, Any]) -> None:
     _save_state(project_dir, state)
 
 
+def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]:
+    """Write/refresh `.nexus/profile.json` and run all IDE-file generators.
+
+    Idempotent: re-deriving from detection produces a stable profile, and
+    generators emit "unchanged" when content already matches. ``from_detection``
+    preserves user-authored rules (those with ``nexus_managed=False``) so a
+    re-run never silently destroys customization.
+
+    Returns a count summary ``{"created", "updated", "unchanged", "inserted"}``.
+    """
+    from nexus.cli.profile import from_detection, hash_profile, load, save
+    from nexus.cli.generators import run_all
+
+    existing = load(project_dir)
+    project_name = existing.project_name if existing else project_dir.name
+    profile = from_detection(project_dir, tier=tier, project_name=project_name)
+    save(project_dir, profile)
+    h = hash_profile(profile)
+
+    user_rules = sum(1 for r in profile.rules if not r.nexus_managed)
+    click.echo(f"\n  [ok] Wrote .nexus/profile.json (hash: {h})")
+    click.echo(
+        f"        languages={','.join(profile.languages) or '-'}, "
+        f"frameworks={','.join(profile.frameworks) or '-'}"
+    )
+    click.echo(
+        f"        rules: {len(profile.rules)} total ({user_rules} user-authored, preserved across re-detect)"
+    )
+
+    results = run_all(profile, project_dir)
+    counts = {"created": 0, "updated": 0, "unchanged": 0, "inserted": 0}
+    changed: list[tuple[Path, str, str]] = []
+    for f, action in results:
+        counts[action] = counts.get(action, 0) + 1
+        if action == "unchanged":
+            continue
+        try:
+            rel = f.path.relative_to(project_dir)
+        except ValueError:
+            rel = f.path
+        changed.append((rel, action, f.target))
+
+    if changed:
+        click.echo("\n  Generated IDE files:")
+        for rel, action, target in changed:
+            click.echo(f"    [{action:>9}] {rel}  ({target})")
+    else:
+        click.echo("\n  IDE files already up to date.")
+    return counts
+
+
 def _load_existing_tier(project_dir: Path) -> Optional[str]:
     """Read tier from existing state.json. Returns None if file or field missing."""
     sj = project_dir / STATE_JSON_REL
@@ -107,7 +158,8 @@ def _load_existing_tier(project_dir: Path) -> Optional[str]:
         return None
 
 
-def _do_fresh(pd: Path, output_format: str, template: Optional[str]) -> dict[str, Any]:
+def _do_fresh(pd: Path, output_format: str, template: Optional[str],
+              accept_defaults: bool = False) -> dict[str, Any]:
     """Fresh init: wizard (or --template), write BOOTSTRAP.md, return selection."""
     from nexus.cli.tools import wizard
 
@@ -120,7 +172,11 @@ def _do_fresh(pd: Path, output_format: str, template: Optional[str]) -> dict[str
     template_src = Path(selection["template_path"])
     dest = pd / BOOTSTRAP_FILENAME
     if dest.exists():
-        if not click.confirm(
+        # On --accept-defaults preserve the existing file (safer default — never
+        # silently overwrite user content in unattended mode).
+        if accept_defaults:
+            click.echo(f"  Keeping existing {BOOTSTRAP_FILENAME} (--accept-defaults).")
+        elif not click.confirm(
             f"\n  {BOOTSTRAP_FILENAME} already exists. Overwrite?",
             default=False,
         ):
@@ -132,10 +188,28 @@ def _do_fresh(pd: Path, output_format: str, template: Optional[str]) -> dict[str
         _write_template(template_src, pd, selection["tier"])
         click.echo(f"\n  [ok] Wrote {BOOTSTRAP_FILENAME} ({selection['tier']} tier)")
 
-    from nexus.cli.tools.journal import _cmd_session_start
+    from nexus.cli.tools.journal import (
+        _cmd_init_agents, _cmd_session_start, _cmd_setup_hooks,
+        _find_git_root, _hooks_installed,
+    )
+
+    # In unattended mode, install hooks BEFORE session-start so the interactive
+    # "Install hooks now? [Y/n]" prompt inside _cmd_session_start is skipped
+    # entirely (it only fires when _hooks_installed(...) is False).
+    if accept_defaults:
+        gr = _find_git_root(pd)
+        if gr and not _hooks_installed(gr):
+            _cmd_setup_hooks(pd, "human")
     _cmd_session_start(pd, "human")
 
     _persist_tier(pd, selection)
+    _ensure_profile_and_generate(pd, selection["tier"])
+
+    # Install the journal-managed AGENTS.md state block + Cursor state rule
+    # + state-summary.md. Distinct managed-block markers from the v0.2
+    # generators, so they coexist in AGENTS.md without overwriting each other.
+    click.echo("\n  Installing journal cross-tool surface...")
+    _cmd_init_agents(pd, "human")
     return selection
 
 
@@ -181,6 +255,7 @@ def _do_upgrade(pd: Path, refresh: bool, template: Optional[str]) -> dict[str, A
         click.echo("\n  (no git repo -- skipping hook validation)")
 
     _persist_tier(pd, selection)
+    _ensure_profile_and_generate(pd, selection["tier"])
     return selection
 
 
@@ -190,6 +265,7 @@ def run_init(
     upgrade: bool = False,
     refresh: bool = False,
     template: Optional[str] = None,
+    accept_defaults: bool = False,
 ) -> None:
     """Bootstrap or upgrade the current project with Nexus."""
     pd = Path(project_dir).resolve()
@@ -215,7 +291,8 @@ def run_init(
     if is_upgrade:
         selection = _do_upgrade(pd, refresh=refresh, template=template)
     else:
-        selection = _do_fresh(pd, output_format=output_format, template=template)
+        selection = _do_fresh(pd, output_format=output_format, template=template,
+                              accept_defaults=accept_defaults)
 
     click.echo("\n  Running health check...")
     from nexus.cli.tools.health import run_health
@@ -240,11 +317,12 @@ def run_init(
         refreshed = False
         if diagnosis["status"] in ("drift", "stale", "missing"):
             if output_format == "human":
-                if click.confirm(
+                do_refresh = accept_defaults or click.confirm(
                     "\n  Auto-refresh the journal now? "
                     "(backfill missing commits, regenerate dashboards)",
                     default=True,
-                ):
+                )
+                if do_refresh:
                     run_journal(
                         subcommand="health",
                         args=("refresh",),
@@ -283,16 +361,25 @@ def run_init(
     click.echo("\n" + "=" * 60)
     click.echo(f"  Nexus init complete ({'upgrade' if is_upgrade else 'fresh setup'}).")
     click.echo("=" * 60)
-    click.echo(f"\n  Next steps:")
-    if not is_upgrade or refresh:
-        click.echo(f"    1. Open {BOOTSTRAP_FILENAME} and paste it into your AI assistant")
-    click.echo(f"    {'2' if (not is_upgrade or refresh) else '1'}. Activate the venv in future sessions:")
+    click.echo("\n  What was set up:")
+    click.echo("    - .nexus/profile.json (single source of truth — edit to customize rules)")
+    click.echo("    - AGENTS.md, CLAUDE.md (cross-tool conventions)")
+    click.echo("    - .cursor/rules/*.mdc (Cursor)")
+    click.echo("    - .github/copilot-instructions.md + .github/instructions/ (Copilot)")
+    click.echo(f"    - {BOOTSTRAP_FILENAME} (optional narrative prompt for richer AI customization)")
+    click.echo("\n  Next steps:")
+    click.echo("    1. Review the generated AGENTS.md and CLAUDE.md.")
+    click.echo("    2. Run `nexus doctor` to verify everything is in sync.")
+    click.echo("    3. Add custom rules: edit .nexus/profile.json (rules with nexus_managed=False")
+    click.echo("       are preserved across re-runs), then `nexus generate`.")
+    click.echo("    4. Track progress: `nexus journal status`.")
     if sys.platform == "win32":
-        click.echo(f"         PowerShell:  & .venv\\Scripts\\Activate.ps1")
-        click.echo(f"         Git Bash:    . .venv/Scripts/activate")
+        click.echo("\n  Activate venv in future sessions:")
+        click.echo("       PowerShell:  & .venv\\Scripts\\Activate.ps1")
+        click.echo("       Git Bash:    . .venv/Scripts/activate")
     else:
-        click.echo(f"         . .venv/bin/activate")
-    click.echo(f"    {'3' if (not is_upgrade or refresh) else '2'}. Track progress:  nexus journal status\n")
+        click.echo("\n  Activate venv in future sessions:  . .venv/bin/activate")
+    click.echo("")
 
     if output_format != "human":
         emit(make_result(
