@@ -50,6 +50,26 @@ temp/
 .nexus/
 BOOTSTRAP.md
 
+# Nexus-generated IDE rule files (overwrite-mode — fully regenerated from
+# .nexus/profile.json on demand). After a fresh clone, run:
+#   nexus init --upgrade --accept-defaults
+# to materialize these. They are intentionally not tracked because the
+# .nexus/profile.json single source of truth + nexus_version stamp is enough
+# to reconstruct them deterministically; gitignoring avoids diff noise on
+# every regeneration.
+#
+# Files explicitly NOT ignored (kept tracked because they carry user content
+# OR are hand-curated, NOT auto-generated):
+#   - AGENTS.md, CLAUDE.md, .github/copilot-instructions.md  (upsert mode:
+#     content outside <!-- nexus:*:begin --> markers is user-owned)
+#   - .codeiumignore                                         (hand-curated)
+#   - .windsurf/rules/, /skills/, /workflows/                (hand-curated;
+#     v0.3 generators not yet implemented)
+.cursor/rules/00-core.mdc
+.cursor/rules/10-*.mdc
+.cursor/rules/state.mdc
+.github/instructions/*.instructions.md
+
 # Nexus - Exclude non-essential files
 COMMIT_SUMMARY.md
 NexusHealthMasterPlan.md
