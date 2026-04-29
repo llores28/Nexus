@@ -888,11 +888,23 @@ def _cmd_log(project_dir: Path, message: str, output_format: str, auto_export: b
 
     # Auto-export the dashboard so it never goes stale silently.
     # Suppress with NEXUS_NO_AUTO_EXPORT=1 (e.g. in tight CI loops).
-    if auto_export and os.environ.get("NEXUS_NO_AUTO_EXPORT", "") not in ("1", "true", "yes"):
-        try:
-            _cmd_export(project_dir, "json")
-        except Exception:
-            pass
+    if auto_export:
+        _maybe_auto_export(project_dir)
+
+
+def _maybe_auto_export(project_dir: Path) -> None:
+    """Regenerate state-dashboard.html + state-summary.md after a state mutation.
+
+    Honors the NEXUS_NO_AUTO_EXPORT env var (set to 1/true/yes to skip — useful
+    in tight CI loops or when batching many writes). Errors are swallowed: a
+    failed dashboard render must never break the underlying mutation.
+    """
+    if os.environ.get("NEXUS_NO_AUTO_EXPORT", "") in ("1", "true", "yes"):
+        return
+    try:
+        _cmd_export(project_dir, "json")
+    except Exception:
+        pass
 
 
 def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
@@ -923,6 +935,7 @@ def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
         next_list.append(task)
         state["next"] = next_list
         _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
         emit(make_result("journal-next-add", Status.PASS,
                          message=f"Added: {task}",
                          details={"next": next_list}),
@@ -965,6 +978,7 @@ def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
         state["next"] = next_list
         _append_daily_journal(project_dir, message, branch, session_n, now)
         _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
         emit(make_result("journal-next-done", Status.PASS,
                          message=f"Completed: {completed}",
                          details={"next": next_list, "branch": branch}),
@@ -979,6 +993,7 @@ def _cmd_next(project_dir: Path, args: tuple, output_format: str) -> None:
     elif action == "clear":
         state["next"] = []
         _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
         emit(make_result("journal-next-clear", Status.PASS,
                          message="Cleared next list."),
              OutputFormat(output_format))
@@ -1016,6 +1031,7 @@ def _cmd_blocker(project_dir: Path, args: tuple, output_format: str) -> None:
         blockers.append(text)
         state["blockers"] = blockers
         _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
         emit(make_result("journal-blocker-add", Status.PASS,
                          message=f"Added blocker: {text}",
                          details={"blockers": blockers}),
@@ -1024,6 +1040,7 @@ def _cmd_blocker(project_dir: Path, args: tuple, output_format: str) -> None:
     elif action == "clear":
         state["blockers"] = []
         _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
         emit(make_result("journal-blocker-clear", Status.PASS,
                          message="Cleared blockers."),
              OutputFormat(output_format))
