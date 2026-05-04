@@ -109,6 +109,85 @@ def _resolve_git_root(project_dir: Path) -> Optional[Path]:
     return None
 
 
+# Directories that should never be walked when searching for sub-repos.
+# These are caches, virtualenvs, and tooling output that may legitimately
+# contain ``.git`` (e.g. a checked-out vendor dependency) but are not
+# project work the user expects to be journaled.
+_SUB_REPO_SKIP_DIRS: frozenset[str] = frozenset({
+    "node_modules", ".venv", "venv", "env", "ENV",
+    "vendor", "__pycache__", ".pytest_cache", ".mypy_cache",
+    ".tox", ".cache", ".nexus", ".github", "build", "dist",
+    ".idea", ".vscode", "htmlcov", ".benchmarks", ".eggs",
+    "target", ".gradle", ".next", ".nuxt", ".turbo", ".parcel-cache",
+    "site-packages",
+})
+
+
+def _find_sub_git_repos(
+    parent_dir: Path,
+    parent_git_root: Optional[Path],
+    max_depth: int = 4,
+) -> list[Path]:
+    """Discover nested standalone git repos inside ``parent_dir``.
+
+    Returns the working-tree paths of repos whose ``.git`` is a real directory
+    (skipping git submodules + worktrees, which have ``.git`` as a file). The
+    parent's own git root, if any, is excluded.
+
+    Walks at most ``max_depth`` levels and skips well-known cache/build dirs
+    via :data:`_SUB_REPO_SKIP_DIRS`. Stops descending into a sub-repo once
+    found (we don't track repo-in-repo nesting beyond the first level).
+
+    Used by ``journal health``, ``journal health refresh``, and
+    ``journal setup-hooks`` to support multi-repo projects (e.g. a parent
+    project with a separate ``webapp/`` repo whose commits otherwise never
+    reach the parent's journal).
+    """
+    if not parent_dir.exists():
+        return []
+    parent_git_dir: Optional[Path] = None
+    if parent_git_root is not None:
+        try:
+            parent_git_dir = (parent_git_root / ".git").resolve()
+        except (OSError, RuntimeError):
+            parent_git_dir = None
+
+    found: list[Path] = []
+
+    def _walk(directory: Path, depth: int) -> None:
+        if depth > max_depth:
+            return
+        try:
+            entries = list(directory.iterdir())
+        except (OSError, PermissionError):
+            return
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_dir():
+                continue
+            if entry.name in _SUB_REPO_SKIP_DIRS:
+                continue
+            git_marker = entry / ".git"
+            # Only count a "real" repo: .git must be a directory (excludes
+            # submodules + worktrees, which use a .git *file*).
+            if git_marker.is_dir():
+                try:
+                    resolved = git_marker.resolve()
+                except (OSError, RuntimeError):
+                    resolved = git_marker
+                if parent_git_dir is None or resolved != parent_git_dir:
+                    # Verify it's actually a usable git repo before adding.
+                    rc, _, _ = _git_run(["rev-parse", "--git-dir"], entry)
+                    if rc == 0:
+                        found.append(entry)
+                # Don't descend into a discovered sub-repo.
+                continue
+            _walk(entry, depth + 1)
+
+    _walk(parent_dir, 0)
+    # Sort for stable output (alphabetical by relative path).
+    return sorted(found, key=lambda p: p.as_posix())
+
+
 def _git_run(args: list[str], cwd: Path, timeout: int = 10) -> tuple[int, str, str]:
     """Run a git command safely. Returns (returncode, stdout, stderr)."""
     try:
@@ -1190,17 +1269,23 @@ def _load_audit_log(project_dir: Path, last_n: int = 20) -> list[dict]:
 
 # --- Git hook factories (paths baked at install-time) ---
 
-def _make_post_commit_hook(bs_cli_path: str, project_dir: str, log_path: str) -> str:
+def _make_post_commit_hook(bs_cli_path: str, project_dir: str, log_path: str,
+                           repo_label: str = "") -> str:
     """Return a post-commit hook script with absolute paths baked in.
 
     Stderr is appended to `log_path` instead of /dev/null so silent failures
     (wrong python, missing module) become diagnosable. Stdout still goes to
     /dev/null because journal log emits JSON that would spam the log file.
+
+    ``repo_label`` is used when this hook is installed inside a nested
+    sub-repo (e.g. ``"webapp/"``); the journal entry is tagged so it's
+    distinguishable from parent-repo commits. Empty string for the parent.
     """
+    label_part = f" ({repo_label})" if repo_label else ""
     return f"""\
 #!/bin/sh
 # {_HOOK_VERSION_TAG} — auto-log on every git commit
-PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal log "git commit: $(git log -1 --pretty=%s)" \\
+PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal log "git commit{label_part}: $(git log -1 --pretty=%s)" \\
   --project-dir "{project_dir}" --format json >/dev/null 2>>"{log_path}" || true
 """
 
@@ -1215,14 +1300,16 @@ PYTHONIOENCODING=utf-8 python "{bs_cli_path}" journal export \\
 """
 
 
-def _make_post_commit_hook_bat(bs_cli_path: str, project_dir: str, log_path: str) -> str:
+def _make_post_commit_hook_bat(bs_cli_path: str, project_dir: str, log_path: str,
+                               repo_label: str = "") -> str:
     """Windows .bat companion for post-commit (used when sh is unavailable)."""
+    label_part = f" ({repo_label})" if repo_label else ""
     return (
         "@echo off\r\n"
         f"rem {_HOOK_VERSION_TAG} — auto-log on every git commit\r\n"
         f'set PYTHONIOENCODING=utf-8\r\n'
         f'for /f "tokens=*" %%m in (\'git log -1 --pretty=%%s\') do (\r\n'
-        f'  python "{bs_cli_path}" journal log "git commit: %%m" '
+        f'  python "{bs_cli_path}" journal log "git commit{label_part}: %%m" '
         f'--project-dir "{project_dir}" --format json >nul 2>>"{log_path}"\r\n'
         f')\r\n'
     )
@@ -1358,6 +1445,90 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False)
                 except OSError:
                     pass
 
+    # Multi-repo: install hooks in any nested standalone git repos so commits
+    # to a sub-repo (e.g. webapp/) also land in the parent's journal in real
+    # time. Hook content is identical except the journal entry is tagged
+    # "(<sub-path>/)" via repo_label, so backfill and live entries match.
+    # Foreign hooks in sub-repos are skipped (not prompted) since sub-repos
+    # commonly have their own toolchain hooks (husky etc.) — the user can
+    # pass --force or remove the foreign hook manually.
+    sub_repos = _find_sub_git_repos(project_dir, git_root)
+    for sub in sub_repos:
+        try:
+            rel_label = sub.relative_to(project_dir).as_posix() + "/"
+        except ValueError:
+            rel_label = sub.name + "/"
+        sub_hooks_dir = sub / ".git" / "hooks"
+        try:
+            sub_hooks_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            skipped.append(f"{rel_label}* (cannot create .git/hooks/)")
+            continue
+
+        sub_sh = {
+            "post-commit": _make_post_commit_hook(bs_cli_posix, pd_posix, log_posix,
+                                                  repo_label=rel_label),
+            "pre-push": _make_pre_push_hook(bs_cli_posix, pd_posix, log_posix),
+        }
+        for hook_name, hook_content in sub_sh.items():
+            hook_path = sub_hooks_dir / hook_name
+            status = _hook_status(hook_path)
+            action: Optional[str] = None
+            if status == "missing":
+                action = "install"
+            elif status == "current":
+                if force:
+                    action = "reinstall"
+                else:
+                    skipped.append(f"{rel_label}{hook_name} (current)")
+                    continue
+            elif status == "outdated":
+                action = "upgrade"
+            elif status == "foreign":
+                if force:
+                    action = "overwrite"
+                else:
+                    skipped.append(f"{rel_label}{hook_name} (foreign — pass --force to overwrite)")
+                    continue
+            try:
+                hook_path.write_text(hook_content, encoding="utf-8")
+                hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+            except OSError:
+                continue
+            if action == "upgrade":
+                upgraded.append(f"{rel_label}{hook_name}")
+            else:
+                installed.append(f"{rel_label}{hook_name} ({action})")
+
+        if is_windows:
+            sub_bat = {
+                "post-commit.bat": _make_post_commit_hook_bat(bs_cli_path, pd_str, log_path_str,
+                                                              repo_label=rel_label),
+                "pre-push.bat": _make_pre_push_hook_bat(bs_cli_path, pd_str, log_path_str),
+            }
+            for bat_name, bat_content in sub_bat.items():
+                bat_path = sub_hooks_dir / bat_name
+                status = _hook_status(bat_path)
+                if status == "missing":
+                    try:
+                        bat_path.write_text(bat_content, encoding="utf-8")
+                        installed.append(f"{rel_label}{bat_name} (install)")
+                    except OSError:
+                        pass
+                elif status == "current" and not force:
+                    skipped.append(f"{rel_label}{bat_name} (current)")
+                elif status == "foreign" and not force:
+                    skipped.append(f"{rel_label}{bat_name} (foreign — pass --force to overwrite)")
+                else:
+                    try:
+                        bat_path.write_text(bat_content, encoding="utf-8")
+                        if status == "outdated":
+                            upgraded.append(f"{rel_label}{bat_name}")
+                        else:
+                            installed.append(f"{rel_label}{bat_name} ({status})")
+                    except OSError:
+                        pass
+
     msg_parts = []
     if installed:
         msg_parts.append(f"Installed: {', '.join(installed)}")
@@ -1368,11 +1539,18 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False)
 
     message = " | ".join(msg_parts) if msg_parts else "Nothing to do."
 
+    sub_repo_paths = [
+        sub.relative_to(project_dir).as_posix() if project_dir in sub.parents else sub.as_posix()
+        for sub in sub_repos
+    ]
+
     if output_format == "human":
         click.echo(f"\n  Git hooks path: {hooks_dir}")
         click.echo(f"  bs_cli path  : {bs_cli_path}")
         click.echo(f"  project-dir  : {pd_str}")
         click.echo(f"  hook log     : {log_path_str}")
+        if sub_repo_paths:
+            click.echo(f"  sub-repos    : {', '.join(sub_repo_paths)}")
         for h in installed:
             click.echo(f"  [install] {h}")
         for h in upgraded:
@@ -1386,6 +1564,8 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False)
         click.echo("  stderr       : appended to the hook log (not /dev/null)")
         if is_windows:
             click.echo("  .bat files   : Windows-native git companions installed")
+        if sub_repo_paths:
+            click.echo("  sub-repos    : commits in nested repos auto-log to parent journal")
         click.echo()
 
     emit(make_result(
@@ -1401,6 +1581,7 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False)
             "installed": installed,
             "upgraded": upgraded,
             "skipped": skipped,
+            "sub_repos": sub_repo_paths,
         },
     ), OutputFormat(output_format)) if output_format != "human" else None
 
@@ -1801,12 +1982,21 @@ def _find_prd(project_dir: Path) -> Optional[Path]:
 
 
 def _commits_not_in_done(state: dict[str, Any], git_root: Path,
-                         since_iso: Optional[str]) -> list[dict]:
+                         since_iso: Optional[str],
+                         repo_label: str = "") -> list[dict]:
     """Return commits since `since_iso` whose subject is NOT already in state.done.
 
-    A commit is considered captured if any done entry contains its subject —
-    matches both `git commit: <subject>` (hook-driven) and free-form entries
-    that happen to mention the subject. since_iso=None scans last 50 commits.
+    A commit is considered captured if any done entry contains its labeled
+    subject — matches both `git commit: <subject>` (parent, hook-driven) and
+    `git commit (<repo_label>): <subject>` (sub-repo, hook-driven). Free-form
+    entries that happen to mention the subject also count as captured.
+
+    ``repo_label`` (e.g. ``"webapp/"``) is used both to match labeled entries
+    in done_blob (so a sub-repo commit with the same subject as a parent
+    commit isn't falsely deduped) AND to tag the returned dicts so the
+    backfill writer can emit labeled entries.
+
+    ``since_iso=None`` scans last 50 commits.
     """
     if since_iso:
         args = ["log", f"--since={since_iso}", "--pretty=format:%H|%aI|%s"]
@@ -1823,13 +2013,25 @@ def _commits_not_in_done(state: dict[str, Any], git_root: Path,
         if len(parts) != 3:
             continue
         sha, iso_date, subject = parts
-        if subject.strip() and subject not in done_blob:
-            missing.append({
-                "hash": sha[:8],
-                "full_hash": sha,
-                "iso_date": iso_date,
-                "subject": subject,
-            })
+        if not subject.strip():
+            continue
+        # Look for the LABELED form when repo_label is set, so that sub-repo
+        # commits are deduped against their own labeled entries (not parent
+        # entries that happen to share a subject string).
+        labeled_marker = (
+            f"git commit ({repo_label}): {subject}"
+            if repo_label
+            else f"git commit: {subject}"
+        )
+        if labeled_marker in done_blob or subject in done_blob:
+            continue
+        missing.append({
+            "hash": sha[:8],
+            "full_hash": sha,
+            "iso_date": iso_date,
+            "subject": subject,
+            "repo_label": repo_label,
+        })
     # Oldest first so backfill order matches commit order.
     return list(reversed(missing))
 
@@ -1890,15 +2092,41 @@ def _diagnose_journal(project_dir: Path) -> dict[str, Any]:
     # empty. The post-commit hook covers active projects; this scan covers
     # the "first upgrade of a pre-Phase-1 project" case where the entire
     # history needs to be considered.
+    #
+    # Multi-repo projects: also scan any nested standalone git repos
+    # (e.g. parent project with a separate webapp/ repo). Sub-repo commits
+    # are tagged with a repo_label so the backfill writer can distinguish
+    # them in state.done.
     git_root = _resolve_git_root(project_dir)
+    sub_repos: list[Path] = []
     if git_root:
-        missing = _commits_not_in_done(state, git_root, since_iso=None)
+        missing = _commits_not_in_done(state, git_root, since_iso=None, repo_label="")
+        sub_repos = _find_sub_git_repos(project_dir, git_root)
+        for sub in sub_repos:
+            try:
+                label = sub.relative_to(project_dir).as_posix() + "/"
+            except ValueError:
+                label = sub.name + "/"
+            sub_missing = _commits_not_in_done(state, sub, since_iso=None, repo_label=label)
+            missing.extend(sub_missing)
+        # Sort all missing chronologically so backfill writes them in order.
+        missing.sort(key=lambda c: c.get("iso_date", ""))
         diagnosis["missing_commits"] = missing
+        diagnosis["sub_repos"] = [
+            (sub.relative_to(project_dir).as_posix() if project_dir in sub.parents
+             or sub == project_dir else sub.as_posix())
+            for sub in sub_repos
+        ]
         if missing:
             if diagnosis["status"] == "ok":
                 diagnosis["status"] = "drift"
+            sub_count = sum(1 for c in missing if c.get("repo_label"))
+            tail = (
+                f" ({sub_count} from sub-repo(s): {', '.join(diagnosis['sub_repos'])})"
+                if sub_count else ""
+            )
             issues.append(
-                f"{len(missing)} commit(s) in recent history are not reflected in done."
+                f"{len(missing)} commit(s) in recent history are not reflected in done.{tail}"
             )
 
     # PRD timestamp advisory.
@@ -1950,7 +2178,11 @@ def _backfill_commits(project_dir: Path, state: dict[str, Any],
             commit_dt = datetime.now(timezone.utc)
         date_short = commit_dt.strftime("%Y-%m-%d")
         branch_tag = f" {branch}" if branch else ""
-        message = f"[backfill] git commit: {c['subject']}"
+        # Sub-repo commits get a (path/) tag so they're distinguishable in
+        # done from parent commits. Empty label = parent (unchanged form).
+        label = c.get("repo_label", "")
+        repo_part = f" ({label})" if label else ""
+        message = f"[backfill] git commit{repo_part}: {c['subject']}"
         state["done"].append(f"[{date_short} S{session_n}{branch_tag}] {message}")
         _append_daily_journal(project_dir, message, branch, session_n, commit_dt)
         written += 1
