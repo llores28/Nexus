@@ -363,3 +363,176 @@ class TestSetupHooksMultiRepo:
         # And should report sub-repo hooks as skipped/current
         assert any("webapp/" in s for s in skipped), \
             f"webapp/ hooks should be skipped as current on second run: {skipped}"
+
+
+# --------------------------------------------------------------------------
+# Polyrepo profile detection — sub-repo stacks merged into parent
+# --------------------------------------------------------------------------
+
+class TestPolyrepoProfileDetection:
+    """When the parent project has minimal files but the actual code lives in
+    a nested standalone repo (e.g. webapp/), profile detection should walk
+    the sub-repo and merge its stack into the parent's languages/frameworks."""
+
+    def test_subrepo_stack_merged_into_parent_profile(self, tmp_path):
+        from nexus.cli.profile import from_detection
+
+        # Parent has only pyproject.toml (so we have SOMETHING in the parent)
+        _init_repo(tmp_path)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "parent"\n', encoding="utf-8"
+        )
+        # Sub-repo "webapp/" with Next.js
+        sub = tmp_path / "webapp"
+        _init_repo(sub)
+        (sub / "package.json").write_text(
+            json.dumps({"name": "web", "dependencies": {"next": "14"}}),
+            encoding="utf-8",
+        )
+        (sub / "tsconfig.json").write_text("{}", encoding="utf-8")
+        (sub / "pnpm-lock.yaml").write_text("", encoding="utf-8")
+
+        profile = from_detection(tmp_path, tier="fast")
+
+        # Parent stack
+        assert "python" in profile.languages
+        # Merged from sub-repo
+        assert "typescript" in profile.languages
+        assert "nextjs" in profile.frameworks
+        assert "pnpm" in profile.package_managers
+
+        # Per-sub-repo detail recorded in extras
+        sub_records = profile.extras.get("sub_repos", [])
+        assert len(sub_records) == 1
+        rec = sub_records[0]
+        assert rec["path"] == "webapp"
+        assert "typescript" in rec["languages"]
+        assert "nextjs" in rec["frameworks"]
+        assert "pnpm" in rec["package_managers"]
+
+    def test_seed_rules_include_subrepo_framework(self, tmp_path):
+        """When sub-repo brings nextjs, the seed-rule library should compose
+        nextjs framework rules into the parent profile."""
+        from nexus.cli.profile import from_detection
+
+        _init_repo(tmp_path)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "parent"\n', encoding="utf-8"
+        )
+        sub = tmp_path / "frontend"
+        _init_repo(sub)
+        (sub / "package.json").write_text(
+            json.dumps({"name": "fe", "dependencies": {"next": "14"}}),
+            encoding="utf-8",
+        )
+        (sub / "tsconfig.json").write_text("{}", encoding="utf-8")
+
+        profile = from_detection(tmp_path, tier="fast")
+        rule_ids = {r.id for r in profile.rules}
+        # nextjs seed rules should be present
+        assert "next-server-components" in rule_ids
+        assert "next-no-secrets-in-client" in rule_ids
+        # typescript language rules also present
+        assert "ts-no-any" in rule_ids
+
+    def test_user_extras_preserved_subrepos_overwritten(self, tmp_path):
+        """Re-running detection updates extras[sub_repos] but preserves
+        any other user-authored keys in extras."""
+        from nexus.cli.profile import from_detection, save, load
+
+        _init_repo(tmp_path)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "parent"\n', encoding="utf-8"
+        )
+
+        # First detect (no sub-repo yet)
+        p1 = from_detection(tmp_path, tier="fast")
+        # User adds an unrelated extras key
+        from dataclasses import replace
+        # Profile is a non-frozen dataclass; mutate extras directly
+        p1.extras["my_user_setting"] = {"foo": "bar"}
+        save(tmp_path, p1)
+
+        # Now add a sub-repo
+        sub = tmp_path / "webapp"
+        _init_repo(sub)
+        (sub / "package.json").write_text(
+            json.dumps({"name": "w", "dependencies": {"next": "14"}}),
+            encoding="utf-8",
+        )
+
+        # Re-detect
+        p2 = from_detection(tmp_path, tier="fast")
+        # User key preserved
+        assert p2.extras.get("my_user_setting") == {"foo": "bar"}
+        # sub_repos populated
+        assert len(p2.extras.get("sub_repos", [])) == 1
+
+
+# --------------------------------------------------------------------------
+# Generators emit a Sub-repositories section
+# --------------------------------------------------------------------------
+
+class TestGeneratorsEmitSubReposSection:
+    def _profile_with_subrepo(self, project_name: str = "demo") -> "Profile":
+        from nexus.cli.profile import Profile, NEXUS_VERSION, Rule
+        return Profile(
+            nexus_version=NEXUS_VERSION,
+            tier="fast",
+            project_name=project_name,
+            languages=("python", "typescript"),
+            frameworks=("nextjs",),
+            package_managers=("pip", "pnpm"),
+            rules=(Rule(id="x", text="X."),),
+            extras={
+                "sub_repos": [
+                    {
+                        "path": "webapp",
+                        "languages": ["typescript"],
+                        "frameworks": ["nextjs"],
+                        "package_managers": ["pnpm"],
+                    },
+                    {
+                        "path": "worker",
+                        "languages": ["go"],
+                        "frameworks": [],
+                        "package_managers": ["go"],
+                    },
+                ]
+            },
+        )
+
+    def test_agents_md_emits_section_with_paths_and_stacks(self, tmp_path):
+        from nexus.cli.generators.agents_md import generate
+        profile = self._profile_with_subrepo()
+        files = generate(profile, tmp_path)
+        body = files[0].content
+        assert "## Sub-repositories" in body
+        assert "`webapp`" in body
+        assert "`worker`" in body
+        assert "nextjs" in body
+        assert "go" in body
+
+    def test_claude_md_emits_section(self, tmp_path):
+        from nexus.cli.generators.claude_md import generate
+        profile = self._profile_with_subrepo()
+        files = generate(profile, tmp_path)
+        body = files[0].content
+        assert "## Sub-repositories" in body
+        assert "`webapp`" in body
+        assert "`worker`" in body
+
+    def test_no_section_when_no_subrepos(self, tmp_path):
+        from nexus.cli.profile import Profile, NEXUS_VERSION, Rule
+        from nexus.cli.generators.agents_md import generate as a_gen
+        from nexus.cli.generators.claude_md import generate as c_gen
+        profile = Profile(
+            nexus_version=NEXUS_VERSION,
+            tier="fast",
+            project_name="solo",
+            languages=("python",),
+            rules=(Rule(id="x", text="X."),),
+        )
+        for gen in (a_gen, c_gen):
+            body = gen(profile, tmp_path)[0].content
+            assert "## Sub-repositories" not in body

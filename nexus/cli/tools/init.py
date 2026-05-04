@@ -122,6 +122,17 @@ def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]
     click.echo(
         f"        rules: {len(profile.rules)} total ({user_rules} user-authored, preserved across re-detect)"
     )
+    sub_repos = profile.extras.get("sub_repos", []) if isinstance(profile.extras, dict) else []
+    if sub_repos:
+        click.echo(f"        sub-repos: {len(sub_repos)} detected, stacks merged into parent")
+        for sub in sub_repos:
+            stack_bits: list[str] = []
+            if sub.get("frameworks"):
+                stack_bits.append("/".join(sub["frameworks"]))
+            if sub.get("languages"):
+                stack_bits.append("+".join(sub["languages"]))
+            stack_summary = " — " + " ".join(stack_bits) if stack_bits else ""
+            click.echo(f"          - {sub.get('path', '?')}{stack_summary}")
 
     results = run_all(profile, project_dir)
     counts = {"created": 0, "updated": 0, "unchanged": 0, "inserted": 0}

@@ -43,6 +43,28 @@ def _build_body(profile: Profile) -> str:
             lines.append(f"- {r.text}{scope}{sev}")
         lines.append("")
 
+    sub_repos = profile.extras.get("sub_repos", []) if isinstance(profile.extras, dict) else []
+    if sub_repos:
+        lines.append("## Sub-repositories")
+        lines.append("")
+        lines.append(
+            "Nested standalone git repos. Commits to each auto-log to the parent "
+            "journal via post-commit hooks (run `nexus journal setup-hooks` if missing):"
+        )
+        lines.append("")
+        for sub in sub_repos:
+            path = sub.get("path", "?")
+            bits: list[str] = []
+            if sub.get("frameworks"):
+                bits.append("/".join(sub["frameworks"]))
+            if sub.get("languages"):
+                bits.append("+".join(sub["languages"]))
+            if sub.get("package_managers"):
+                bits.append("(" + ", ".join(sub["package_managers"]) + ")")
+            stack_str = " — " + " ".join(bits) if bits else ""
+            lines.append(f"- `{path}`{stack_str}")
+        lines.append("")
+
     lines.append("## Project state")
     lines.append("")
     lines.append("- Read `.nexus/state-summary.md` at session start for current tasks and recent commits.")
