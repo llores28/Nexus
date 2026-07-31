@@ -137,15 +137,10 @@ def check_docker_extension() -> dict[str, Any]:
         if userprofile:
             ext_dirs.append(Path(userprofile) / ".vscode" / "extensions")
             ext_dirs.append(Path(userprofile) / ".cursor" / "extensions")
-            # Legacy Windsurf locations remain read-only compatibility inputs.
-            ext_dirs.append(Path(userprofile) / ".windsurf" / "extensions")
-            ext_dirs.append(Path(userprofile) / ".codeium" / "windsurf" / "extensions")
     else:
         home = Path.home()
         ext_dirs.append(home / ".vscode" / "extensions")
         ext_dirs.append(home / ".cursor" / "extensions")
-        ext_dirs.append(home / ".windsurf" / "extensions")
-        ext_dirs.append(home / ".codeium" / "windsurf" / "extensions")
 
     for ext_dir in ext_dirs:
         if ext_dir.exists():

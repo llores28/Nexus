@@ -93,6 +93,8 @@ def ensure_gitignore(project_dir: Path, *, dry_run: bool = False) -> InstallActi
             begin,
             ".venv/",
             ".cache/",
+            "__pycache__/",
+            "node_modules/",
             ".env",
             ".env.*",
             "*.key",

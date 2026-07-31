@@ -40,7 +40,8 @@ def project(tmp_path):
 
 def test_run_security_pass_when_clean(project):
     result = run_security(project)
-    # Status should be either pass or warn (codeiumignore missing on bare project).
+    # A missing legacy Codeium ignore file is informational, not a readiness gap.
+    assert result["codeiumignore"]["status"] == "pass"
     assert result["status"] in ("pass", "warn")
     assert result["secrets"]["secrets_found"] == 0
 
@@ -64,11 +65,11 @@ def test_run_security_fails_when_secrets_found(project):
 
 
 def test_run_security_warn_for_non_secret_issues(project):
-    # No secrets, but missing .codeiumignore should produce a warning.
+    # Missing legacy .codeiumignore must never force a warning by itself.
     result = run_security(project)
-    # codeiumignore missing on this bare fixture → warn
-    if not (project / ".codeiumignore").exists():
-        assert result["status"] in ("warn", "pass")
+    # Other fixture-dependent checks can still warn.
+    assert result["codeiumignore"]["status"] == "pass"
+    assert result["status"] in ("warn", "pass")
 
 
 # --------------------------------------------------------------------------

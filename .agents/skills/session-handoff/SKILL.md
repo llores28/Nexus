@@ -56,7 +56,7 @@ Regenerates `.nexus/state-summary.md` (AI-optimized snapshot) and
 automatically.
 
 ## Step 5 — Handoff block
-Share this with your next session (or paste into Claude Code / new the active agent chat):
+Share this with the next agent session:
 
 ```
 State: read `.nexus/state-summary.md` for the AI-optimized snapshot.

@@ -35,6 +35,15 @@ class TestValidatePath:
         with pytest.raises(ValueError, match="traversal"):
             validate_path("../../etc/passwd", tmp_path)
 
+    def test_blocks_same_prefix_sibling(self, tmp_path):
+        project = tmp_path / "repo"
+        sibling = tmp_path / "repo-escape"
+        project.mkdir()
+        sibling.mkdir()
+
+        with pytest.raises(ValueError, match="traversal"):
+            validate_path(str(sibling), project)
+
     def test_default_project_root_uses_nexus_utils(self, tmp_path, monkeypatch):
         # Regression: security.py used to `from bootstrap.cli.utils import find_project_root`,
         # a leftover from the bootstrap → nexus rename. validate_path() called without an

@@ -29,7 +29,7 @@ def validate_path(path_str: str, project_root: Optional[Path] = None) -> Path:
     project_root = project_root.resolve()
     target = (project_root / path_str).resolve()
 
-    if not str(target).startswith(str(project_root)):
+    if target != project_root and project_root not in target.parents:
         raise ValueError(
             f"Path traversal blocked: '{path_str}' resolves outside project root "
             f"'{project_root}'"

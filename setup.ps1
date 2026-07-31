@@ -2,13 +2,14 @@
 #
 # RECOMMENDED usage (avoids AMSI/Defender blocks):
 #
-#   Option A — clone the repo and run locally:
-#     git clone --branch v0.3.0 --depth 1 https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1
+#   Option A — clone the repo and install into an explicit project:
+#     git clone --branch v0.3.0 --depth 1 https://github.com/llores28/Nexus.git; cd Nexus
+#     .\setup.ps1 -ProjectDir C:\path\to\project -Template team -Unattended
 #
 #   Option B — download to disk, inspect, then run:
 #     irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1
 #     Unblock-File setup-nexus.ps1
-#     .\setup-nexus.ps1
+#     .\setup-nexus.ps1 -ProjectDir C:\path\to\project -Template team -Unattended
 #
 #   NOTE: 'irm ... | iex' is blocked by Windows Defender AMSI on most systems
 #   (ScriptContainedMaliciousContent) because it is the canonical malware cradle.
@@ -20,6 +21,7 @@
 #   Flags (only work when run from disk, not via irm|iex):
 #   .\setup.ps1 -ProjectDir C:\path\to\project
 #   .\setup.ps1 -ProjectDir C:\path\to\project -Source C:\path\to\nexus.whl
+#   .\setup.ps1 -ProjectDir C:\path\to\project -Template team -Unattended
 #   .\setup.ps1 -UpgradeOnly     # just refresh the Nexus package; skip nexus init
 #   .\setup.ps1 -Refresh         # on upgrade, also regenerate BOOTSTRAP.md
 #
@@ -39,12 +41,16 @@ param(
     [string]$Consumers = "all",
     [string]$Source = "",
     [switch]$DryRun,
+    [Alias("Yes")]
     [switch]$AcceptDefaults,
+    [switch]$Unattended,
     [switch]$UpgradeOnly,
     [switch]$Refresh
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Unattended) { $AcceptDefaults = $true }
 
 function Info($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Warn($msg) { Write-Host "`n!!  $msg" -ForegroundColor Yellow }
@@ -68,10 +74,11 @@ if (-not $PSCommandPath) {
     Write-Host ""
     Write-Host "     irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1" -ForegroundColor White
     Write-Host "     Unblock-File setup-nexus.ps1" -ForegroundColor White
-    Write-Host "     .\setup-nexus.ps1" -ForegroundColor White
+    Write-Host "     .\setup-nexus.ps1 -ProjectDir C:\path\to\project -Template team -Unattended" -ForegroundColor White
     Write-Host ""
     Write-Host "   Or clone the repo and run locally (most reliable):" -ForegroundColor Cyan
-    Write-Host "     git clone --branch v0.3.0 --depth 1 https://github.com/llores28/Nexus.git; cd Nexus; .\setup.ps1" -ForegroundColor White
+    Write-Host "     git clone --branch v0.3.0 --depth 1 https://github.com/llores28/Nexus.git; cd Nexus" -ForegroundColor White
+    Write-Host "     .\setup.ps1 -ProjectDir C:\path\to\project -Template team -Unattended" -ForegroundColor White
     Write-Host ""
     exit 1
 }
@@ -193,11 +200,11 @@ Invoke-VenvPython -m pip --version
 
 if ($mode -eq "clone") {
     if ($priorVersion) {
-        Info "Reinstalling Nexus (editable) from local clone"
+        Info "Reinstalling Nexus from local clone"
     } else {
-        Info "Installing Nexus (editable) from local clone"
+        Info "Installing Nexus from local clone"
     }
-    Invoke-VenvPython -m pip install --quiet -e $ScriptDir
+    Invoke-VenvPython -m pip install --quiet --upgrade --force-reinstall $ScriptDir
 } else {
     if ($priorVersion) {
         Info "Upgrading Nexus from $NexusSpec"
@@ -235,12 +242,16 @@ $initFlags = @("--consumers", $Consumers)
 $profileJson = Join-Path $ProjectDir ".nexus\profile.json"
 $manifestJson = Join-Path $ProjectDir ".nexus\install-manifest.json"
 $stateJson = Join-Path $ProjectDir ".nexus\state.json"
-if ((Test-Path $profileJson) -or (Test-Path $manifestJson) -or (Test-Path $stateJson)) {
+$legacyWindsurf = Join-Path $ProjectDir ".windsurf"
+$agentsMd = Join-Path $ProjectDir "AGENTS.md"
+$hasManagedAgents = (Test-Path $agentsMd) -and ((Get-Content -LiteralPath $agentsMd -Raw) -match '<!-- nexus:agents-md:begin -->')
+if ((Test-Path $profileJson) -or (Test-Path $manifestJson) -or (Test-Path $stateJson) -or
+    (Test-Path $legacyWindsurf) -or $hasManagedAgents) {
     $initFlags += "--upgrade"
     if ($Refresh) {
         $initFlags += "--refresh"
     }
-    Info "Existing Nexus project detected (profile, manifest, or legacy state) -- running upgrade"
+    Info "Existing Nexus project detected (profile, manifest, managed AGENTS, or legacy artifacts) -- running upgrade"
 } elseif ($Refresh) {
     Warn "-Refresh has no effect on a fresh init (BOOTSTRAP.md doesn't exist yet). Ignoring."
 }
@@ -252,10 +263,16 @@ if ($AcceptDefaults) { $initFlags += "--yes" }
 $venvNexus = Join-Path $venv "Scripts\nexus.exe"
 if (-not (Test-Path $venvNexus)) { $venvNexus = Join-Path $venv "bin\nexus" }
 $savedPythonPath = $env:PYTHONPATH
+$nexusExit = 1
 try {
     $env:PYTHONPATH = $null
-    & $venvNexus init --project-dir $ProjectDir @initFlags
-    $nexusExit = $LASTEXITCODE
+    Push-Location -LiteralPath $ProjectDir
+    try {
+        & $venvNexus init --project-dir $ProjectDir @initFlags
+        $nexusExit = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
 } finally {
     $env:PYTHONPATH = $savedPythonPath
 }

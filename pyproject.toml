@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Code Generators",
 ]
 dependencies = [
@@ -42,6 +43,9 @@ nexus = "nexus.cli.bs_cli:cli"
 [project.urls]
 Repository = "https://github.com/llores28/Nexus"
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["nexus*"]
@@ -49,8 +53,10 @@ exclude = ["tests*", ".nexus*", ".windsurf*", ".cache*"]
 
 [tool.setuptools.package-data]
 nexus = [
-    "*.md",
-    "*.html",
+    "1Fast-Bootstrap.md",
+    "2Team-Bootstrap.md",
+    "3Enterprise-Bootstrap.md",
+    "Universal-Bootstrap.md",
     "bundles/default/skills/*/*",
     "bundles/default/skills/*/*/*",
     "bundles/default/skills/*/*/*/*",

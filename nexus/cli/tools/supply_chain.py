@@ -9,6 +9,7 @@ Subcommands:
 """
 
 import json
+import fnmatch
 import os
 import platform
 import re
@@ -59,6 +60,16 @@ KNOWN_COMPROMISED = [
 
 # --- Lockfile Scanners ---
 
+_SCAN_SKIP_DIRS = {
+    ".git", ".venv", "venv", "env", "node_modules", "build", "dist",
+    ".cache", "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", ".nox",
+}
+
+_PYTHON_MANIFEST_PATTERNS = (
+    "pyproject.toml", "requirements*.txt", "pylock*.toml", "poetry.lock",
+    "uv.lock", "Pipfile", "Pipfile.lock",
+)
+
 def _scan_lockfile(lockfile_path: Path, registry: list[dict]) -> list[dict]:
     """Scan a single lockfile for known compromised package versions."""
     findings = []
@@ -106,15 +117,29 @@ def _scan_lockfile(lockfile_path: Path, registry: list[dict]) -> list[dict]:
 
 def _find_lockfiles(scan_dir: Path) -> list[Path]:
     """Find all npm/yarn/bun lockfiles under scan_dir."""
-    lockfile_names = ["package-lock.json", "yarn.lock", "bun.lock", "bun.lockb"]
-    found = []
+    lockfile_names = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"}
+    found: list[Path] = []
     for root, dirs, files in os.walk(scan_dir):
-        # Skip deep node_modules to avoid noise
-        dirs[:] = [d for d in dirs if d != ".git"]
+        dirs[:] = [d for d in dirs if d not in _SCAN_SKIP_DIRS]
         for f in files:
             if f in lockfile_names:
                 found.append(Path(root) / f)
-    return found
+    return sorted(found)
+
+
+def _find_dependency_manifests(scan_dir: Path) -> dict[str, list[Path]]:
+    """Inventory supported manifests without reading caches or vendored trees."""
+    manifests: dict[str, list[Path]] = {"npm": [], "python": []}
+    for root, dirs, files in os.walk(scan_dir):
+        dirs[:] = [d for d in dirs if d not in _SCAN_SKIP_DIRS]
+        root_path = Path(root)
+        for filename in files:
+            path = root_path / filename
+            if filename == "package.json":
+                manifests["npm"].append(path)
+            if any(fnmatch.fnmatch(filename, pattern) for pattern in _PYTHON_MANIFEST_PATTERNS):
+                manifests["python"].append(path)
+    return {name: sorted(paths) for name, paths in manifests.items()}
 
 
 def _scan_node_modules(scan_dir: Path, registry: list[dict]) -> list[dict]:
@@ -123,7 +148,7 @@ def _scan_node_modules(scan_dir: Path, registry: list[dict]) -> list[dict]:
     for advisory in registry:
         for mal_dep in advisory.get("malicious_deps", []):
             for root, dirs, files in os.walk(scan_dir):
-                dirs[:] = [d for d in dirs if d != ".git"]
+                dirs[:] = [d for d in dirs if d not in (_SCAN_SKIP_DIRS - {"node_modules"})]
                 if root.endswith(f"node_modules/{mal_dep}") or root.endswith(f"node_modules\\{mal_dep}"):
                     findings.append({
                         "advisory_id": advisory["id"],
@@ -206,7 +231,7 @@ def _check_hardening(scan_dir: Path) -> list[dict]:
     """Check package.json files for supply chain hardening measures."""
     recommendations = []
     for root, dirs, files in os.walk(scan_dir):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules")]
+        dirs[:] = [d for d in dirs if d not in _SCAN_SKIP_DIRS]
         if "package.json" in files:
             pkg_path = Path(root) / "package.json"
             try:
@@ -285,11 +310,17 @@ def _run_scan(scan_dir: str, output_format: str) -> None:
     all_findings = lockfile_findings + node_module_findings
     critical_count = sum(1 for f in all_findings if f.get("severity") == "critical")
 
-    status = Status.FAIL if critical_count > 0 else Status.PASS
+    manifests = _find_dependency_manifests(scan_path)
+    has_npm_coverage = bool(lockfiles or (scan_path / "node_modules").is_dir())
+    status = Status.FAIL if critical_count > 0 else (Status.PASS if has_npm_coverage else Status.INFO)
     message = (
         f"CRITICAL: {critical_count} compromised package(s) found!"
         if critical_count > 0
-        else f"Clean — scanned {len(lockfiles)} lockfile(s), no compromised packages found."
+        else (
+            f"Clean — scanned {len(lockfiles)} npm lockfile(s), no compromised packages found."
+            if has_npm_coverage
+            else "No supported npm lockfile or node_modules coverage; no clean result claimed."
+        )
     )
 
     emit(make_result(
@@ -302,6 +333,12 @@ def _run_scan(scan_dir: str, output_format: str) -> None:
             "findings": all_findings,
             "finding_count": len(all_findings),
             "critical_count": critical_count,
+            "coverage": {
+                "npm_lockfiles": len(lockfiles),
+                "npm_manifests": len(manifests["npm"]),
+                "python_manifests": len(manifests["python"]),
+                "python_advisories": "not-scanned",
+            },
         },
     ), OutputFormat(output_format))
 
@@ -336,31 +373,69 @@ def _run_ioc(output_format: str) -> None:
 def _run_audit(scan_dir: str, output_format: str) -> None:
     """Full audit: scan + IOC + hardening recommendations."""
     scan_path = Path(scan_dir).resolve()
+    if not scan_path.is_dir():
+        emit(make_result(
+            "supply-chain-audit",
+            Status.FAIL,
+            message=f"Directory not found: {scan_dir}",
+        ), OutputFormat(output_format))
+        return
 
     # Phase 1: Lockfile scan
-    lockfiles = _find_lockfiles(scan_path) if scan_path.exists() else []
+    lockfiles = _find_lockfiles(scan_path)
+    manifests = _find_dependency_manifests(scan_path)
     lockfile_findings = []
     for lf in lockfiles:
         lockfile_findings.extend(_scan_lockfile(lf, KNOWN_COMPROMISED))
 
     # Phase 2: node_modules scan
-    node_module_findings = _scan_node_modules(scan_path, KNOWN_COMPROMISED) if scan_path.exists() else []
+    node_module_findings = _scan_node_modules(scan_path, KNOWN_COMPROMISED)
 
     # Phase 3: IOC check
     ioc_findings = _check_iocs(KNOWN_COMPROMISED)
     c2_findings = _check_c2_connectivity(KNOWN_COMPROMISED)
 
     # Phase 4: Hardening check
-    hardening = _check_hardening(scan_path) if scan_path.exists() else []
+    hardening = _check_hardening(scan_path)
+    if manifests["npm"] and not lockfiles:
+        hardening.append({
+            "severity": "medium",
+            "issue": "npm_lockfile_missing",
+            "description": "npm manifest found without a supported lockfile; dependency coverage is incomplete.",
+        })
+    if manifests["python"]:
+        hardening.append({
+            "severity": "info",
+            "issue": "python_advisory_coverage_unavailable",
+            "description": (
+                "Python manifests were inventoried, but the bundled offline registry currently covers npm IOCs only. "
+                "Use Dependabot or an independently installed Python advisory scanner for vulnerability coverage."
+            ),
+            "manifests": [str(path.relative_to(scan_path)) for path in manifests["python"][:20]],
+        })
 
     all_findings = lockfile_findings + node_module_findings + ioc_findings + c2_findings
     critical_count = sum(1 for f in all_findings if f.get("severity") == "critical")
 
-    status = Status.FAIL if critical_count > 0 else (Status.WARN if hardening else Status.PASS)
+    has_npm_coverage = bool(lockfiles or (scan_path / "node_modules").is_dir())
+    has_any_manifest = bool(manifests["npm"] or manifests["python"])
+    status = (
+        Status.FAIL
+        if critical_count > 0
+        else Status.WARN
+        if hardening
+        else Status.PASS
+        if has_npm_coverage
+        else Status.INFO
+    )
     if critical_count > 0:
         message = f"CRITICAL: {critical_count} compromise indicator(s) found!"
     elif hardening:
-        message = f"Clean, but {len(hardening)} hardening recommendation(s) found."
+        message = f"No compromise indicator found; {len(hardening)} coverage or hardening item(s) require review."
+    elif not has_any_manifest:
+        message = "No supported dependency manifests found; no dependency-clean result claimed."
+    elif not has_npm_coverage:
+        message = "Dependency manifests found without supported advisory coverage; no clean result claimed."
     else:
         message = "Clean — no compromised packages, no IOCs, hardening looks good."
 
@@ -374,6 +449,13 @@ def _run_audit(scan_dir: str, output_format: str) -> None:
             "compromised_packages": lockfile_findings + node_module_findings,
             "ioc_findings": ioc_findings + c2_findings,
             "hardening_recommendations": hardening,
+            "coverage": {
+                "npm_lockfiles": len(lockfiles),
+                "npm_manifests": len(manifests["npm"]),
+                "python_manifests": len(manifests["python"]),
+                "python_advisories": "not-scanned",
+                "ioc_platform": platform.system(),
+            },
             "summary": {
                 "critical": critical_count,
                 "total_findings": len(all_findings),

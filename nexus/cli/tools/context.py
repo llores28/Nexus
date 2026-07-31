@@ -38,7 +38,10 @@ IGNORE_PATTERNS = (
     ".mypy_cache/", ".cache/", "dist/", "build/", "coverage/", "htmlcov/",
     "*.log", "*.min.js", "*.map", ".nexus/journal/", ".nexus/state-dashboard.html",
 )
-SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".cache", "dist", "build"}
+SKIP_DIRS = {
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache",
+    ".mypy_cache", ".cache", ".nexus", ".windsurf", "dist", "build",
+}
 TEXT_SUFFIXES = {".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".md", ".toml", ".yaml", ".yml", ".json"}
 
 _SECRET_PATTERNS = (
@@ -126,8 +129,20 @@ def audit_context(project_dir: Path) -> dict[str, Any]:
         largest.append((size, _relative(path, root)))
     largest.sort(reverse=True)
 
+    manifest = load_manifest(root)
+    selected_consumers = set(manifest.get("consumers", ())) if manifest else set()
+    relevant_ignore_tools = {
+        tool
+        for tool, rel in IGNORE_FILES.items()
+        if (tool == "cursor" and "cursor" in selected_consumers)
+        or (tool == "repomix" and (root / rel).exists())
+        or (tool == "aider" and (root / rel).exists())
+        or (tool == "codeium" and (root / rel).exists())
+    }
     ignore_coverage = {}
     for tool, rel in IGNORE_FILES.items():
+        if tool not in relevant_ignore_tools:
+            continue
         path = root / rel
         content = _read_text(path) if path.exists() else ""
         missing = [p for p in IGNORE_PATTERNS if p not in content]
@@ -135,7 +150,6 @@ def audit_context(project_dir: Path) -> dict[str, Any]:
 
     state_path = root / ".nexus" / "state.json"
     skill_issues = validate_skill_tree(root / ".agents" / "skills")
-    manifest = load_manifest(root)
     projection_mismatches: list[str] = []
     if manifest and "claude" in manifest.get("consumers", []):
         canonical_root = root / ".agents" / "skills"

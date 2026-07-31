@@ -29,47 +29,16 @@ from nexus.cli.security import (
     scan_text_for_secrets, validate_path,
     is_template_file, gitignored_files,
 )
+from nexus.cli.installation import bundled_skill_files
 
 
 # --- Expected Nexus Components ---
 
-EXPECTED_RULES = [
-    "00-token-efficiency.md",
-]
-
-# Rules that a bootstrapped project SHOULD have (not required for Nexus repo itself)
-OPTIONAL_RULES = [
-    "00-project-overview.md",
-    "01-security-and-secrets.md",
-    "02-change-safety-and-testing.md",
-    "03-release-and-ops.md",
-    "02-secure-coding-and-input-validation.md",
-    "03-change-management-and-approvals.md",
-    "04-testing-and-quality-gates.md",
-]
-
-EXPECTED_SKILLS = [
-    "prereqs-check",
-    "smoketest",
-    "debug-investigate",
-    "research-investigate",
-    "webscrape",
-    "create-cli-tool",
-    "local-env",
-]
-
-EXPECTED_WORKFLOWS = [
-    "bootstrap-wizard.md",
-    "bootstrap-prd.md",
-    "prereqs-check.md",
-    "smoketest.md",
-    "debug-investigate.md",
-    "research.md",
-    "scrape-docs.md",
-    "local-env.md",
-    "create-tool.md",
-    "migrate-toolkit.md",
-]
+EXPECTED_SKILLS = sorted({
+    rel.split("/", 1)[0]
+    for rel in bundled_skill_files()
+    if rel.endswith("/SKILL.md")
+})
 
 EXPECTED_CROSS_IDE = [
     "AGENTS.md",

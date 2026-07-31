@@ -32,11 +32,18 @@ less setup-nexus.sh                              # inspect before execution
 bash setup-nexus.sh --project-dir . --template team --yes
 ```
 
-The installer creates a project-local `.venv`, installs the immutable `v0.3.0`
-release, previews or applies Nexus, and invokes the venv's own executable. A
-local Nexus clone is supported for development, but requires an explicit target:
+The installer creates or reuses the target project's `.venv`, installs the
+immutable `v0.3.0` release non-editably, previews or applies Nexus, and invokes
+that venv's own executable. A local Nexus clone is supported for development,
+but requires an explicit target:
 `.\setup.ps1 -ProjectDir C:\path\to\project` or
 `./setup.sh --project-dir /path/to/project`.
+
+For an existing Nexus project, run the same command again. The installer detects
+the profile, install manifest, managed `AGENTS.md`, legacy state, or legacy
+`.windsurf` inputs and selects collision-safe upgrade mode. Add `-DryRun`
+(PowerShell) or `--dry-run` (shell) to preview every planned action first; use
+`-Unattended` or `--unattended` in IDE terminals and automation.
 
 ---
 
@@ -241,13 +248,13 @@ Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl`.
 | `journal` | `status`, `log`, `diff`, `next`, `blocker`, `decision`, `health`, `blame`, `export`, `export-summary`, `setup-hooks`, `init-agents`, `session-start`, `session-end` | Cross-session project state with auto-rolling sessions, daily rotation, drift detection, MADR ADRs, and cross-tool surface. |
 | `health` | `check`, `components`, `security`, `usage`, `report` | Legacy 4-tier health monitor (file inventory, security posture, audit trail). |
 | `prereqs` | — | Checks prerequisites (Python, Git, Docker, Node, extensions). `--guide` outputs setup instructions. |
-| `smoketest` | — | Auto-detects project type and runs non-mutating environment checks, lint, typecheck, and tests. `--isolated-install` verifies a wheel in a temporary venv. |
+| `smoketest` | — | Auto-detects project type and runs non-mutating environment checks, lint, typecheck, and tests. Python dependency checks use the project `.venv`; `--isolated-install` verifies a wheel in a temporary venv. |
 | `debug` | `logs`, `trace`, `deps`, `env`, `ports`, `secrets-scan` | Log scanning, error tracing, dependency audit, env validation, port checking, secret detection. |
 | `research` | `docs`, `deps`, `changelog`, `compare` | Search docs, check dependency info, review changelogs, compare packages. |
 | `scrape` | `page`, `api`, `links`, `docs` | Web scraping for external docs and APIs. |
-| `scaffold` | — | Generates a new CLI tool from template with security framework integration. |
+| `scaffold` | — | Generates a project-owned CLI at `tools/nexus/<name>.py`; supports `--project-dir` and preserves collisions. |
 | `local-env` | `init`, `build`, `up`, `down`, `logs`, `status`, `validate` | Docker container management and validation. |
-| `supply-chain` | `scan`, `ioc`, `audit`, `advisories` | Detect compromised npm packages and malicious IOCs. |
+| `supply-chain` | `scan`, `ioc`, `audit`, `advisories` | Detect bundled npm compromise indicators and system IOCs, with explicit coverage status. |
 | `context` | `audit`, `map`, `mask`, `ignores`, `route` | Inspect, bound, compress, scope, and route coding-agent context. |
 
 **Stack**: Python 3.10+, Click 8.1.7, Rich 13.9.4, PyYAML 6.0.2, httpx 0.27.2, beautifulsoup4 4.12.3.
@@ -266,10 +273,15 @@ Templates influence which seed rules are composed into the profile and which pro
 
 Higher tiers add additional seed rules (e.g. enterprise adds `pr-required`, `adr-for-decisions`, `audit-log`).
 
-Supporting files:
+Repository-authoring references (not installed as loose target-project files):
+
 - `nexus/Bootstrap-Project-Intake.md` — project intake questionnaire
 - `nexus/PRD-Template.md` — PRD generation template
 - `nexus/wizard-reference.md` — wizard logic reference
+
+The packaged `bootstrap-prd` skill carries its own
+`references/PROJECT-INTAKE.md` and `assets/PRD-TEMPLATE.md`, so it remains
+self-contained after wheel installation.
 
 ---
 
@@ -284,6 +296,7 @@ Nexus generates these files from `.nexus/profile.json`:
 | `CLAUDE.md` | Claude Code and its VS Code extension | upsert | `@AGENTS.md` import plus Claude-only deltas |
 | `.claude/skills/*/SKILL.md` | Claude Code | synchronized projection | Byte-equivalent projection of canonical project skills |
 | `.cursor/rules/*.mdc` | Cursor | overwrite | Cursor-only scoped deltas |
+| `.cursorignore` | Cursor | managed block | Context-heavy generated/runtime exclusions |
 | `.github/copilot-instructions.md` | GitHub Copilot and VS Code | upsert | Thin adapter plus Copilot-only deltas |
 | `.github/instructions/*.instructions.md` | GitHub Copilot | overwrite | Copilot-only path-scoped deltas |
 | `REVIEW.md` | Devin Review, optional | user-owned | Review-only guidance not duplicated from `AGENTS.md` |
@@ -363,7 +376,7 @@ Validates Nexus components and project security posture. Distinct from `nexus do
 | Tier | What It Checks | Details |
 |---|---|---|
 | **Components** | `.nexus/profile.json`, canonical `AGENTS.md`, `.agents/skills`, and thin provider adapters | File existence, valid frontmatter, size limits |
-| **Security** | `.gitignore`, `.codeiumignore`, secrets scan, dependencies | Pattern coverage, secret detection, importability of CLI packages |
+| **Security** | `.gitignore`, secrets scan, dependencies, and optional legacy `.codeiumignore` input | Pattern coverage, secret detection, dependency importability, and explicit scan coverage |
 | **Usage** | CLI audit trail | Tool usage counts, error rates, duration trends, last activity |
 | **Recommendations** | Actionable fixes | Sorted by severity (critical/high/medium/low) with specific commands |
 
@@ -373,7 +386,12 @@ Validates Nexus components and project security posture. Distinct from `nexus do
 
 ## Supply Chain Security (`supply-chain` command)
 
-Detects compromised npm packages and system-level indicators of compromise (IOCs).
+Checks a bundled, offline npm compromise registry and system-level indicators of
+compromise (IOCs). It inventories Python manifests but does not claim Python
+advisory coverage; Python-only projects return a coverage warning and should use
+Dependabot or an independently installed Python advisory scanner. A project
+with no supported lockfile or scan target returns INFO/WARN, never a false clean
+PASS.
 
 **Subcommands:**
 - `scan` — scan `package.json` / lockfiles for known-malicious packages and vulnerable versions
@@ -458,7 +476,8 @@ Nexus/
 │   ├── 3Enterprise-Bootstrap.md    # Enterprise bootstrap template
 │   ├── Bootstrap-Project-Intake.md    # Project intake questionnaire
 │   ├── PRD-Template.md                # PRD generation template
-│   ├── wizard-reference.md            # Wizard logic (excluded from indexing)
+│   ├── wizard-reference.md            # Source-only wizard reference
+│   ├── bundles/default/skills/        # Wheel-shipped Agent Skill bundle
 │   └── cli/
 │       ├── bs_cli.py                  # CLI entry point
 │       ├── profile.py                 # Profile dataclass + from_detection
@@ -488,12 +507,12 @@ Nexus/
 │           ├── journal.py             # Project journal
 │           ├── journal_dashboard.py   # Static HTML dashboard generator
 │           └── supply_chain.py        # Supply chain security scanner
-├── .nexus/                            # Per-project state (auto-created)
-│   ├── profile.json                   # Single source of truth for cross-IDE generation
-│   ├── state.md                       # Human + AI readable project state
-│   ├── state-summary.md               # Four-field ≤80-line snapshot
-│   ├── state.json                     # Machine-readable state
-│   └── state-dashboard.html           # Generated static dashboard
+├── .agents/skills/                    # Dogfood projection; must match bundled skills
+├── .claude/skills/                    # Byte-equivalent Claude projection
+├── .nexus/
+│   ├── profile.json                   # Tracked project configuration
+│   ├── install-manifest.json          # Tracked ownership and content hashes
+│   └── state-*                        # Ignored runtime journal/dashboard output
 ├── AGENTS.md                          # Cross-tool conventions (managed block + user content)
 ├── CLAUDE.md                          # Claude Code instructions (managed block + user content)
 ├── .cursor/rules/
@@ -505,24 +524,41 @@ Nexus/
 │       └── <lang>.instructions.md     # Copilot per-language (applyTo:)
 ├── BOOTSTRAP.md                       # Optional narrative AI prompt (not regenerated by default)
 ├── docs/decisions/                    # MADR-minimal ADRs (`nexus journal decision add`)
-├── .codeiumignore                     # Excludes large files + state JSON from indexing
-└── .gitignore                         # Sensitive file exclusions
+├── tools/nexus/                       # Project-owned tools created by `nexus scaffold`
+└── .gitignore                         # Secrets, runtime output, caches, and legacy local inputs
 ```
 
-Optional v0.3 surface (intentionally absent from generators today):
+Legacy inputs may exist in a user's project during an upgrade, but Nexus does
+not ship, generate, modify, or track them:
 
 ```
-.windsurf/                             # Legacy migration inputs only
+.windsurf/                             # Read-only legacy migration inputs
 ├── skills/                            # SKILL.md definitions
 └── workflows/                         # Slash-command workflows
+.codeiumignore                         # Optional legacy ignore input
 ```
+
+### Source and release boundary
+
+- Git tracks implementation, tests, documentation, canonical dogfood skills,
+  native adapters, the profile, and the install manifest.
+- Wheels contain Python packages, four runtime bootstrap templates, and every
+  skill `SKILL.md`, script, reference, and asset required after installation.
+- Runtime journal state, dashboards, caches, build outputs, local IDE settings,
+  workspaces, and legacy Windsurf/Codeium inputs are ignored.
+- The managed project safety block covers Python caches, Node dependencies,
+  virtual environments, secrets, and Nexus runtime state without replacing
+  user-authored ignore rules.
+- Ignore rules affect untracked files only. The repository tests also inspect
+  the Git index so a formerly tracked legacy or runtime artifact cannot hide
+  behind `.gitignore`.
 
 ---
 
 ## Extending Nexus
 
 - **Add a custom rule**: edit `.nexus/profile.json`, append a rule with `nexus_managed: false`, then run `nexus generate`. It survives every future `profile detect` / `init --upgrade`.
-- **Add a CLI tool**: `python nexus/cli/bs_cli.py scaffold <name>` — inherits the security framework. Wire it into `bs_cli.py` manually (auto-registration is on the v0.3 list).
+- **Add a project tool**: `nexus scaffold <name> --project-dir .` — writes a collision-safe `tools/nexus/<name>.py` with the security framework imports and a runnable Click entry point.
 - **Switch tier**: `nexus profile set tier team` — re-derives seed rules; user rules preserved.
 - **Track project state**: `nexus journal setup-hooks` is automatic on `init`. After that, every commit auto-logs.
 - **Record a decision**: `nexus journal decision add "<title>"` writes a MADR-minimal ADR to `docs/decisions/`.

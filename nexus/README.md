@@ -17,7 +17,13 @@ Codex, Devin, Claude, Cursor, GitHub Copilot, and VS Code extension hosts.
 
 Legacy `.windsurf/rules`, `.windsurf/skills`, and `.windsurf/workflows` are
 accepted only as migration inputs by `nexus init --upgrade`. New projects use
-`AGENTS.md` and `.agents/skills`.
+`AGENTS.md` and `.agents/skills`; Nexus does not ship or generate legacy files.
+
+The distributable skill bundle lives under `bundles/default/skills`. Each skill
+is self-contained: optional scripts, references, and assets travel with its
+`SKILL.md`. The repository's `.agents/skills` tree is a tested dogfood projection
+of that bundle, while `.claude/skills` is generated from the canonical project
+copy.
 
 ## Context-efficient workflow
 

@@ -130,11 +130,16 @@ def test_fresh_init_installs_advertised_surfaces_and_manifest(tmp_path):
     assert result.exit_code == 0, result.output
     assert (tmp_path / "AGENTS.md").is_file()
     assert (tmp_path / "CLAUDE.md").is_file()
+    assert (tmp_path / ".cursorignore").is_file()
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "__pycache__/" in gitignore
+    assert "node_modules/" in gitignore
     assert (tmp_path / ".agents" / "skills" / "nexus-onboard" / "SKILL.md").is_file()
     assert (tmp_path / ".claude" / "skills" / "nexus-onboard" / "SKILL.md").is_file()
     manifest = json.loads((tmp_path / ".nexus" / "install-manifest.json").read_text(encoding="utf-8"))
     assert manifest["nexus_version"] == NEXUS_VERSION
     assert manifest["consumers"] == list(ALL_CONSUMERS)
+    assert ".cursorignore" in manifest["files"]
 
 
 def test_profile_only_project_can_upgrade(tmp_path):

@@ -11,12 +11,11 @@ description: Scaffold a new project-specific CLI tool that inherits the security
 
 ## Command
 ```
-nexus scaffold <name> --description "What this tool does"
+nexus scaffold <name> --project-dir . --description "What this tool does"
 ```
 
 ## What gets created
-- `nexus/cli/tools/<name>.py` — tool implementation with security imports
-- Registration snippet for `bs_cli.py` (must be added manually)
+- `tools/nexus/<name>.py` — tracked, project-local executable with Nexus security imports
 
 ## Guardrails (enforced by template)
 - No `shell=True` in subprocess calls
@@ -27,5 +26,5 @@ nexus scaffold <name> --description "What this tool does"
 
 ## After scaffolding
 1. Edit the generated file to implement tool logic
-2. Add the registration snippet to `bs_cli.py`
-3. Test with `--format human` first, then `--format json`
+2. Test with `python tools/nexus/<name>.py --project-dir . --format human`
+3. Commit the generated tool with the project source

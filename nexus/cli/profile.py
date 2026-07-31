@@ -189,7 +189,7 @@ def from_detection(
 
     # --- Multi-repo: merge sub-repo stacks into the parent ---
     # The wizard explicitly anticipates polyrepo / multi-app projects (per
-    # nexus/Bootstrap-Project-Intake.md and nexus/Uni-WindsurfBootstrap.md).
+    # nexus/Bootstrap-Project-Intake.md and nexus/Universal-Bootstrap.md).
     # When the actual code lives in a nested standalone git repo (e.g. a
     # parent project with a webapp/ repo), detection on the parent alone
     # misses the real stack. Walk discovered sub-repos and merge their

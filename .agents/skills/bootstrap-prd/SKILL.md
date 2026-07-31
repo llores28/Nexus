@@ -9,7 +9,7 @@ Goal: create or update `docs/PRD.md` from bootstrap wizard outputs while keeping
 ## 1) Required inputs
 
 Use these inputs as source of truth:
-1. Latest `/bootstrap-wizard` output:
+1. Latest Nexus onboarding or wizard output:
    - recommended tier
    - selected bootstrap file path
    - reasoning table
@@ -17,7 +17,7 @@ Use these inputs as source of truth:
    - architecture summary
    - risk note
    - confidence
-2. `nexus/Bootstrap-Project-Intake.md`
+2. Answers collected with [the project intake](references/PROJECT-INTAKE.md)
 3. Existing project context (`README*`, `docs/*`) when available
 
 If key inputs are missing, ask focused follow-up questions before writing `docs/PRD.md`.
@@ -37,7 +37,7 @@ Conflict policy:
 
 ## 3) Drafting steps
 
-1. Create/update `docs/PRD.md` using `nexus/PRD-Template.md`.
+1. Create/update `docs/PRD.md` using [the bundled PRD template](assets/PRD-TEMPLATE.md).
 2. Fill all sections with evidence from wizard output and intake.
 3. Add measurable acceptance criteria for each requirement.
 4. Add a `Cohesion Matrix` mapping each PRD requirement to:

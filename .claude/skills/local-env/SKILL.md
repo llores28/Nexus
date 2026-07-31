@@ -29,13 +29,13 @@ nexus local-env validate
 1. `local-env init` → generates Dockerfile/compose from detected stack
 2. `local-env build` → builds image
 3. `local-env up` → starts container, waits for health
-4. Use the active agent `browser_preview` on the localhost port → visual verification
+4. Use an available browser automation or preview tool on the localhost port for visual verification
 5. If user wants to share: instruct them to use Docker Desktop ngrok/Release Share extension
 6. `local-env validate` → pre-production readiness report
 7. `local-env down` → cleanup
 
-## Docker Extension integration
-- If IDE Docker Extension is installed: use it for container management, Dockerfile intellisense, and compose visualization
+## IDE integration
+- If a VS Code-compatible Docker extension is installed, it may assist with container management, Dockerfile IntelliSense, and Compose visualization
 - CLI tools handle build/up/down/health/validate regardless of extension presence
 
 ## Scope boundary

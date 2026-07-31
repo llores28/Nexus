@@ -191,6 +191,19 @@ def _ensure_profile_and_generate(
     if gitignore_action.action != "unchanged":
         click.echo(f"\n  [{gitignore_action.action:>9}] .gitignore (Nexus safety block)")
 
+    managed_context_paths: list[Path] = []
+    if "cursor" in consumers:
+        from nexus.cli.tools.context import manage_ignores
+
+        ignore_result = manage_ignores(project_dir, "cursor", apply=True)
+        cursor_result = ignore_result["results"][0]
+        managed_context_paths.append(project_dir / cursor_result["path"])
+        if cursor_result["action"] != "unchanged":
+            click.echo(
+                f"\n  [{cursor_result['action']:>9}] {cursor_result['path']} "
+                "(Cursor context boundary)"
+            )
+
     skill_result = install_skills(
         project_dir,
         consumers=consumers,
@@ -207,7 +220,11 @@ def _ensure_profile_and_generate(
             click.echo(f"    [{item['action']:>9}] {item['path']}{suffix}")
     record_managed_files(
         project_dir,
-        [project_dir / ".gitignore", project_dir / ".nexus" / "profile.json"],
+        [
+            project_dir / ".gitignore",
+            project_dir / ".nexus" / "profile.json",
+            *managed_context_paths,
+        ],
     )
     return counts
 
@@ -429,6 +446,14 @@ def _run_init_dry_run(
     click.echo(f"\n  Dry-run plan: tier={tier}, consumers={','.join(consumers)}")
     ignore_action = ensure_gitignore(pd, dry_run=True)
     click.echo(f"    [{ignore_action.action:>9}] {ignore_action.path}")
+    if "cursor" in consumers:
+        from nexus.cli.tools.context import manage_ignores
+
+        cursor_ignore = manage_ignores(pd, "cursor", apply=False)["results"][0]
+        click.echo(
+            f"    [{cursor_ignore['action']:>9}] {cursor_ignore['path']} "
+            "-- Cursor context boundary"
+        )
     for item, action in zip((item for item, _ in generated), generated_actions):
         suffix = f" -- {action.detail}" if action.detail else ""
         click.echo(f"    [{action.action:>9}] {item.path.relative_to(pd)}{suffix}")
@@ -441,7 +466,7 @@ def _run_init_dry_run(
     legacy_rules = pd / ".windsurf" / "rules"
     if legacy_rules.is_dir():
         click.echo("    [   review] .windsurf/rules/* -> manual AGENTS.md/profile candidates")
-    click.echo("\n  No files were written.")
+    click.echo("\n  Preview complete. No files were written by the preview.")
     return tier
 
 

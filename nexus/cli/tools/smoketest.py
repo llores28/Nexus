@@ -143,6 +143,25 @@ def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
+def _project_python(project_dir: Path) -> Optional[Path]:
+    """Return a project-owned interpreter without falling back to global Python."""
+    candidates = (
+        project_dir / ".venv" / "Scripts" / "python.exe",
+        project_dir / ".venv" / "bin" / "python",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    try:
+        prefix = Path(sys.prefix).resolve()
+        root = project_dir.resolve()
+        if prefix == root or root in prefix.parents:
+            return Path(sys.executable)
+    except OSError:
+        pass
+    return None
+
+
 # --- Step runners ---
 
 def _run_step(
@@ -150,6 +169,7 @@ def _run_step(
     cmd_str: Optional[str],
     cwd: Path,
     timeout: int = 120,
+    python_executable: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Run a single smoketest step. Returns structured result."""
     if not cmd_str:
@@ -165,7 +185,7 @@ def _run_step(
 
         args = shlex.split(cmd_str)
         if args and args[0].lower() in {"python", "python3"}:
-            args[0] = sys.executable
+            args[0] = str(python_executable or sys.executable)
         result = subprocess.run(
             args, capture_output=True, text=True, timeout=timeout, cwd=str(cwd),
             env={**os.environ, "CI": "true", "NODE_ENV": "test"},
@@ -375,21 +395,56 @@ def run_smoketest(
     if isolated_install:
         steps.append(_isolated_install(proj_path))
 
-    # Step 1: Dependency install verify
-    steps.append(_run_step("deps-verify", cmds.get("install"), proj_path, timeout=180))
+    project_python = _project_python(proj_path)
+
+    # Step 1: Dependency verification must not inspect an unrelated global
+    # interpreter. Setup standardizes Python projects on `<project>/.venv`.
+    dependency_cmd = cmds.get("install")
+    if dependency_cmd and dependency_cmd.startswith(("python ", "python3 ")) and project_python is None:
+        steps.append({
+            "step": "deps-verify",
+            "status": "skip",
+            "message": "No project-local .venv; run Nexus setup or use --isolated-install",
+            "duration_ms": 0,
+        })
+    else:
+        steps.append(
+            _run_step(
+                "deps-verify",
+                dependency_cmd,
+                proj_path,
+                timeout=180,
+                python_executable=project_python,
+            )
+        )
 
     # Step 2: Lint / typecheck
-    lint_result = _run_step("lint", cmds.get("lint"), proj_path, timeout=60)
+    lint_result = _run_step(
+        "lint", cmds.get("lint"), proj_path, timeout=60, python_executable=project_python
+    )
     steps.append(lint_result)
-    tc_result = _run_step("typecheck", cmds.get("typecheck"), proj_path, timeout=60)
+    tc_result = _run_step(
+        "typecheck", cmds.get("typecheck"), proj_path, timeout=60,
+        python_executable=project_python,
+    )
     steps.append(tc_result)
 
     # Step 3: Unit tests
-    steps.append(_run_step("test", cmds.get("test"), proj_path, timeout=180))
+    steps.append(
+        _run_step(
+            "test", cmds.get("test"), proj_path, timeout=180,
+            python_executable=project_python,
+        )
+    )
 
     if level == "full":
         # Step 4: Build
-        steps.append(_run_step("build", cmds.get("build"), proj_path, timeout=300))
+        steps.append(
+            _run_step(
+                "build", cmds.get("build"), proj_path, timeout=300,
+                python_executable=project_python,
+            )
+        )
 
         # Step 5: Server start + health check
         start_cmd = cmds.get("start")

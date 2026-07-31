@@ -8,7 +8,8 @@ Cursor, GitHub Copilot, and agent extensions hosted by VS Code.
 Use the repository's pinned `v0.3.0` setup script. Download and inspect the
 script before running it; do not pipe it into a shell. The installer creates
 `<project>/.venv`, installs Nexus there, and invokes that environment's
-`nexus` executable.
+`nexus` executable. Clone-based setup uses a normal non-editable install, so a
+target project never depends on the continued presence of the Nexus clone.
 
 The tag-based commands are release instructions: until the immutable `v0.3.0`
 tag is published, use a locally built wheel through `-Source` / `--source`.
@@ -40,6 +41,8 @@ independently verified.
 | `nexus context ignores` | Audit or apply tool-specific ignore blocks |
 | `nexus context route` | Provider-neutral capability recommendation |
 | `nexus smoketest --isolated-install` | Test and verify the built wheel in a temporary venv |
+| `nexus scaffold <name> --project-dir .` | Create a collision-safe project tool at `tools/nexus/<name>.py` |
+| `nexus supply-chain audit --project-dir .` | Scan bundled npm compromise indicators and report advisory coverage gaps |
 | `nexus journal handoff` | Compact four-field cross-agent handoff |
 | `nexus health check` | Legacy component and security inventory |
 
@@ -53,6 +56,20 @@ available. Commands use subprocess argument lists and never `shell=True`.
 - `.claude/skills` is a Nexus-owned byte-equivalent Claude projection.
 - `CLAUDE.md`, `.cursor/rules`, `.github/*`, and optional `REVIEW.md` contain
   consumer-specific deltas only.
+- Cursor selections receive a managed `.cursorignore` context boundary.
 - `.nexus/install-manifest.json` records ownership and hashes for safe upgrades.
+
+## Release boundary
+
+The wheel contains the Python package, the four runtime bootstrap templates,
+and the complete recursive Agent Skill bundle. Repository-only design docs,
+tests, journal output, dashboards, caches, build products, local IDE settings,
+and legacy Windsurf/Codeium inputs are not deployment payload. A repository
+test compares manifest ownership with the Git index and inspects the package-data
+allowlist so clean clones and built wheels expose the same supported contract.
+
+Supply-chain results are coverage-aware: no supported npm lockfile means no
+clean PASS, and Python manifests are inventoried as a warning because the
+offline registry does not provide Python advisory coverage.
 
 Run the tests with `python -m pytest tests/`.

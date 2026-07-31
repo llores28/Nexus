@@ -4,6 +4,7 @@
 # Usage:
 #   ./setup.sh --project-dir /path/to/project
 #   ./setup.sh --project-dir /path/to/project --source /path/to/nexus.whl
+#   ./setup.sh --project-dir /path/to/project --template team --unattended
 #   ./setup.sh --upgrade-only   # just refresh the Nexus package; skip nexus init
 #   ./setup.sh --refresh        # on upgrade, also regenerate BOOTSTRAP.md
 #
@@ -64,7 +65,7 @@ while [ "$#" -gt 0 ]; do
     --consumers) CONSUMERS="$2"; shift ;;
     --source) SOURCE="$2"; NEXUS_SPEC="$2"; shift ;;
     --dry-run) DRY_RUN=1 ;;
-    --yes|--accept-defaults) YES=1 ;;
+    --yes|--accept-defaults|--unattended) YES=1 ;;
     --upgrade-only) UPGRADE_ONLY=1 ;;
     --refresh)      REFRESH=1 ;;
     -h|--help)
@@ -168,11 +169,11 @@ PYTHONPATH= python -m pip --version
 
 if [ "$MODE" = "clone" ]; then
   if [ -n "$PRIOR_VERSION" ]; then
-    info "Reinstalling Nexus (editable) from local clone"
+    info "Reinstalling Nexus from local clone"
   else
-    info "Installing Nexus (editable) from local clone"
+    info "Installing Nexus from local clone"
   fi
-  PYTHONPATH= python -m pip install --quiet -e "$SCRIPT_DIR"
+  PYTHONPATH= python -m pip install --quiet --upgrade --force-reinstall "$SCRIPT_DIR"
 else
   if [ -n "$PRIOR_VERSION" ]; then
     info "Upgrading Nexus from $NEXUS_SPEC"
@@ -203,12 +204,16 @@ fi
 
 # --- 7. Run nexus init (auto-detect upgrade vs fresh) ---
 INIT_FLAGS=(--consumers "$CONSUMERS")
-if [ -f "$PROJECT_DIR/.nexus/profile.json" ] || [ -f "$PROJECT_DIR/.nexus/install-manifest.json" ] || [ -f "$PROJECT_DIR/.nexus/state.json" ]; then
+HAS_MANAGED_AGENTS=0
+if [ -f "$PROJECT_DIR/AGENTS.md" ] && grep -q '<!-- nexus:agents-md:begin -->' "$PROJECT_DIR/AGENTS.md"; then
+  HAS_MANAGED_AGENTS=1
+fi
+if [ -f "$PROJECT_DIR/.nexus/profile.json" ] || [ -f "$PROJECT_DIR/.nexus/install-manifest.json" ] || [ -f "$PROJECT_DIR/.nexus/state.json" ] || [ -d "$PROJECT_DIR/.windsurf" ] || [ "$HAS_MANAGED_AGENTS" -eq 1 ]; then
   INIT_FLAGS+=(--upgrade)
   if [ "$REFRESH" -eq 1 ]; then
     INIT_FLAGS+=(--refresh)
   fi
-  info "Existing Nexus project detected (profile, manifest, or legacy state) -- running upgrade"
+  info "Existing Nexus project detected (profile, manifest, managed AGENTS, or legacy artifacts) -- running upgrade"
 elif [ "$REFRESH" -eq 1 ]; then
   warn "--refresh has no effect on a fresh init (BOOTSTRAP.md doesn't exist yet). Ignoring."
 fi
@@ -222,7 +227,10 @@ if [ -x "$VENV/Scripts/nexus.exe" ]; then
 else
   NEXUS_BIN="$VENV/bin/nexus"
 fi
-PYTHONPATH= "$NEXUS_BIN" init --project-dir "$PROJECT_DIR" "${INIT_FLAGS[@]}"
+(
+  cd "$PROJECT_DIR"
+  PYTHONPATH= "$NEXUS_BIN" init --project-dir "$PROJECT_DIR" "${INIT_FLAGS[@]}"
+)
 
 # --- 8. Done ---
 info "Setup complete."

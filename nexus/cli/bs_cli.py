@@ -150,11 +150,17 @@ def scrape_cmd(ctx, subcommand, url, output_format, depth):
 @click.argument("name")
 @click.option("--description", default="", help="Tool description.")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory that will own the generated tool.")
 @click.pass_context
-def scaffold_cmd(ctx, name, description, output_format):
-    """Scaffold a new CLI tool from template."""
+def scaffold_cmd(ctx, name, description, output_format, project_dir):
+    """Scaffold a tracked project-local CLI tool."""
     from nexus.cli.tools.scaffold import run_scaffold
-    run_scaffold(name=name, description=description, output_format=output_format)
+    run_scaffold(
+        name=name,
+        description=description,
+        output_format=output_format,
+        project_dir=project_dir,
+    )
 
 
 @cli.command("local-env")

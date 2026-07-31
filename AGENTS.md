@@ -9,7 +9,7 @@ project instructions, Agent Skills, workflows, and compact cross-agent state.
 - `nexus/` — Fast, Team, Enterprise, and universal bootstrap templates
 - `.agents/skills/` — canonical just-in-time workflows
 - `tests/` — pytest suite
-- `.windsurf/` — legacy migration input only
+- Target-project `.windsurf/*` — accepted only as read-only legacy migration input
 
 ## Working rules
 

@@ -8,8 +8,8 @@
 - Selected bootstrap tier: Fast | Team | Enterprise
 - Wizard confidence: High | Medium | Low
 - Source artifacts:
-  - `/bootstrap-wizard` output:
-  - `nexus/Bootstrap-Project-Intake.md`:
+  - Nexus onboarding or wizard output:
+  - Project intake answers:
   - Selected bootstrap file:
 
 ## 1) Problem Statement

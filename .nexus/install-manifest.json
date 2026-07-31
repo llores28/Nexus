@@ -9,11 +9,19 @@
   ],
   "files": {
     ".agents/skills/bootstrap-prd/SKILL.md": {
-      "sha256": "8a4719a3b49cabe3db7d9f0c93d692226bed4e4099fff0077bd4b4c52d9485bf",
+      "sha256": "a0774c912f4b12e2576f06249267d349f4596238df9cc8b37a07d2387729eafc",
       "source": "bundle:bootstrap-prd/SKILL.md"
     },
+    ".agents/skills/bootstrap-prd/assets/PRD-TEMPLATE.md": {
+      "sha256": "398c5549f6c0a6dcb2709f3b66890181703377f9921bf998acce48a6dbf0d1c7",
+      "source": "bundle:bootstrap-prd/assets/PRD-TEMPLATE.md"
+    },
+    ".agents/skills/bootstrap-prd/references/PROJECT-INTAKE.md": {
+      "sha256": "3cc452b10512f6c53f1502b3cefd64168ca8cba47956cfd1a127e778796784ac",
+      "source": "bundle:bootstrap-prd/references/PROJECT-INTAKE.md"
+    },
     ".agents/skills/create-cli-tool/SKILL.md": {
-      "sha256": "7735319ca7de4eea4cf8321cb26a118b9b8e72c834abdd61feedb9b266de051c",
+      "sha256": "582d0072d48a3a9df08073bb934a73b2f44d9ddd7399fa84df8a660b6557b92f",
       "source": "bundle:create-cli-tool/SKILL.md"
     },
     ".agents/skills/debug-investigate/SKILL.md": {
@@ -21,7 +29,7 @@
       "source": "bundle:debug-investigate/SKILL.md"
     },
     ".agents/skills/local-env/SKILL.md": {
-      "sha256": "014b4b14ae9b5dee173107cf80e6658152baf67abe9d878964bc1ca108f9d125",
+      "sha256": "e3faef3a35ccd884bde8a65ba95ae9ed6becac67b5826930734bcf1750af9fca",
       "source": "bundle:local-env/SKILL.md"
     },
     ".agents/skills/nexus-health/SKILL.md": {
@@ -45,7 +53,7 @@
       "source": "bundle:scrape-docs/SKILL.md"
     },
     ".agents/skills/session-handoff/SKILL.md": {
-      "sha256": "23715ae54cdd9b08b960047d3e181704046766bdfc86eb3d2188d827bc0dd6d8",
+      "sha256": "8d5333686adde6d6c854a5ab8bc0027c8c08168915a79e44fdc139d77e073fa5",
       "source": "bundle:session-handoff/SKILL.md"
     },
     ".agents/skills/smoketest/SKILL.md": {
@@ -53,15 +61,23 @@
       "source": "bundle:smoketest/SKILL.md"
     },
     ".agents/skills/supply-chain-audit/SKILL.md": {
-      "sha256": "71b42008eac092699d9f9d8e41b356f3a1aeafb1604cf480934b539520069b34",
+      "sha256": "700ece87207f226d5c7b73412f1ad406b28a1c8528d03bfb36109a32182507c3",
       "source": "bundle:supply-chain-audit/SKILL.md"
     },
     ".claude/skills/bootstrap-prd/SKILL.md": {
-      "sha256": "8a4719a3b49cabe3db7d9f0c93d692226bed4e4099fff0077bd4b4c52d9485bf",
+      "sha256": "a0774c912f4b12e2576f06249267d349f4596238df9cc8b37a07d2387729eafc",
       "source": "projection:.agents/skills/bootstrap-prd/SKILL.md"
     },
+    ".claude/skills/bootstrap-prd/assets/PRD-TEMPLATE.md": {
+      "sha256": "398c5549f6c0a6dcb2709f3b66890181703377f9921bf998acce48a6dbf0d1c7",
+      "source": "projection:.agents/skills/bootstrap-prd/assets/PRD-TEMPLATE.md"
+    },
+    ".claude/skills/bootstrap-prd/references/PROJECT-INTAKE.md": {
+      "sha256": "3cc452b10512f6c53f1502b3cefd64168ca8cba47956cfd1a127e778796784ac",
+      "source": "projection:.agents/skills/bootstrap-prd/references/PROJECT-INTAKE.md"
+    },
     ".claude/skills/create-cli-tool/SKILL.md": {
-      "sha256": "7735319ca7de4eea4cf8321cb26a118b9b8e72c834abdd61feedb9b266de051c",
+      "sha256": "582d0072d48a3a9df08073bb934a73b2f44d9ddd7399fa84df8a660b6557b92f",
       "source": "projection:.agents/skills/create-cli-tool/SKILL.md"
     },
     ".claude/skills/debug-investigate/SKILL.md": {
@@ -69,7 +85,7 @@
       "source": "projection:.agents/skills/debug-investigate/SKILL.md"
     },
     ".claude/skills/local-env/SKILL.md": {
-      "sha256": "014b4b14ae9b5dee173107cf80e6658152baf67abe9d878964bc1ca108f9d125",
+      "sha256": "e3faef3a35ccd884bde8a65ba95ae9ed6becac67b5826930734bcf1750af9fca",
       "source": "projection:.agents/skills/local-env/SKILL.md"
     },
     ".claude/skills/nexus-health/SKILL.md": {
@@ -93,7 +109,7 @@
       "source": "projection:.agents/skills/scrape-docs/SKILL.md"
     },
     ".claude/skills/session-handoff/SKILL.md": {
-      "sha256": "23715ae54cdd9b08b960047d3e181704046766bdfc86eb3d2188d827bc0dd6d8",
+      "sha256": "8d5333686adde6d6c854a5ab8bc0027c8c08168915a79e44fdc139d77e073fa5",
       "source": "projection:.agents/skills/session-handoff/SKILL.md"
     },
     ".claude/skills/smoketest/SKILL.md": {
@@ -101,19 +117,23 @@
       "source": "projection:.agents/skills/smoketest/SKILL.md"
     },
     ".claude/skills/supply-chain-audit/SKILL.md": {
-      "sha256": "71b42008eac092699d9f9d8e41b356f3a1aeafb1604cf480934b539520069b34",
+      "sha256": "700ece87207f226d5c7b73412f1ad406b28a1c8528d03bfb36109a32182507c3",
       "source": "projection:.agents/skills/supply-chain-audit/SKILL.md"
     },
     ".cursor/rules/00-core.mdc": {
       "sha256": "56b0f7ea44c59411aa952751b9fd28947666866ab6fd1c9cd2931ca019d18d06",
       "source": "generator:cursor"
     },
+    ".cursorignore": {
+      "sha256": "4046a7911e76a339ef1d34b59411186de8c51f1ab31827b83d7a8d37c59eff0b",
+      "source": "generator"
+    },
     ".github/copilot-instructions.md": {
       "sha256": "893ecce75a299add5ca0a203edf6d6b7c2e59ad7f1a7f31a3cb0d15e1b23edd9",
       "source": "generator:copilot"
     },
     ".gitignore": {
-      "sha256": "91c677299798e0b82fbeb148fb5804f49b0b21ea2aed4c79400e6ffc47db1856",
+      "sha256": "809f77ebbe1f11180d9a1f34f8729a385e5f79c21014bc605787ad6f4d6e091b",
       "source": "generator"
     },
     ".nexus/profile.json": {
@@ -121,7 +141,7 @@
       "source": "generator"
     },
     "AGENTS.md": {
-      "sha256": "db2af6be9c5feaf6f7323d82059fe5009959fbd4d3380f66809b6989ead182dc",
+      "sha256": "c9a5ce0e267b932d4cca3533a194d15665c0fbba73a252607ea2c62805aac54d",
       "source": "generator:agents_md"
     },
     "CLAUDE.md": {
