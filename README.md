@@ -10,10 +10,9 @@ Drift detection (`nexus doctor`) validates the install manifest, provider discov
 
 Run from the directory of the project you want to bootstrap.
 
-> **Release status:** the commands below become available when the immutable
-> `v0.3.0` GitHub tag is published. While developing the unreleased branch,
-> build the wheel and pass its path with `-Source` / `--source`; PyPI is not an
-> installation source for this release.
+> **Release status:** onboarding is pinned to the immutable `v0.3.0` GitHub
+> release. PyPI is not an installation source for this release; local and
+> offline installs can pass a verified wheel path with `-Source` / `--source`.
 
 ### Recommended — run the pinned installer from your project
 

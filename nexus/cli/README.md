@@ -11,8 +11,8 @@ script before running it; do not pipe it into a shell. The installer creates
 `nexus` executable. Clone-based setup uses a normal non-editable install, so a
 target project never depends on the continued presence of the Nexus clone.
 
-The tag-based commands are release instructions: until the immutable `v0.3.0`
-tag is published, use a locally built wheel through `-Source` / `--source`.
+The tag-based commands use the immutable `v0.3.0` GitHub release. For local or
+offline validation, use a verified wheel through `-Source` / `--source`.
 
 For local or offline validation, both installers accept an explicit package
 source:
