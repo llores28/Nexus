@@ -187,6 +187,75 @@ def from_detection(
     if "go" in langs and "go" not in pms:
         pms.append("go")
 
+    # --- Multi-repo: merge sub-repo stacks into the parent ---
+    # The wizard explicitly anticipates polyrepo / multi-app projects (per
+    # nexus/Bootstrap-Project-Intake.md and nexus/Uni-WindsurfBootstrap.md).
+    # When the actual code lives in a nested standalone git repo (e.g. a
+    # parent project with a webapp/ repo), detection on the parent alone
+    # misses the real stack. Walk discovered sub-repos and merge their
+    # languages / frameworks / package_managers into the parent's lists so
+    # the seed-rule library composes rules covering the full polyrepo.
+    # Per-sub-repo detail is recorded in extras["sub_repos"] for visibility
+    # and so generators can emit a "Sub-repositories" section.
+    sub_repo_records: list[dict[str, Any]] = []
+    try:
+        from nexus.cli.tools.journal import _find_sub_git_repos, _resolve_git_root
+        parent_git_root = _resolve_git_root(project_dir)
+        sub_paths = _find_sub_git_repos(project_dir, parent_git_root)
+    except Exception:
+        sub_paths = []
+
+    for sub_path in sub_paths:
+        try:
+            sub_stack = _detect_stack(sub_path)
+            sub_info = _detect_project(sub_path)
+        except Exception:
+            continue
+        sub_type = sub_info.get("type", "unknown")
+        sub_langs: list[str] = []
+        if sub_type in ("python", "fullstack"):
+            sub_langs.append("python")
+        if sub_type in ("node", "fullstack"):
+            if (sub_path / "tsconfig.json").exists() or (sub_path / "tsconfig.base.json").exists():
+                sub_langs.append("typescript")
+            else:
+                sub_langs.append("javascript")
+        if sub_type == "go":
+            sub_langs.append("go")
+        sub_fw = sub_stack.get("stack")
+        sub_frameworks: list[str] = []
+        if sub_fw and sub_fw not in ("unknown", "node", "python"):
+            sub_frameworks.append(sub_fw)
+        sub_pms: list[str] = []
+        if sub_info.get("package_manager"):
+            sub_pms.append(sub_info["package_manager"])
+        if "python" in sub_langs and "pip" not in sub_pms:
+            sub_pms.append("pip")
+        if "go" in sub_langs and "go" not in sub_pms:
+            sub_pms.append("go")
+
+        # Merge into parent's lists, preserving order + uniqueness.
+        for l in sub_langs:
+            if l not in langs:
+                langs.append(l)
+        for f in sub_frameworks:
+            if f not in frameworks:
+                frameworks.append(f)
+        for pm in sub_pms:
+            if pm not in pms:
+                pms.append(pm)
+
+        try:
+            rel = sub_path.relative_to(project_dir).as_posix()
+        except ValueError:
+            rel = sub_path.name
+        sub_repo_records.append({
+            "path": rel,
+            "languages": sub_langs,
+            "frameworks": sub_frameworks,
+            "package_managers": sub_pms,
+        })
+
     # --- Test runner ---
     # Detect from the actual script body (package.json) or from pyproject.toml,
     # not from the smoketest-generated "npm run test" wrapper which loses the
@@ -256,6 +325,13 @@ def from_detection(
             if not r.nexus_managed and r.id not in seed_ids
         )
         extras = dict(existing.extras)
+
+    # Refresh the detection-derived sub_repos record. User-authored extras keys
+    # are preserved; only `sub_repos` is overwritten (or removed if none found).
+    if sub_repo_records:
+        extras["sub_repos"] = sub_repo_records
+    elif "sub_repos" in extras:
+        del extras["sub_repos"]
 
     return Profile(
         nexus_version=NEXUS_VERSION,
