@@ -78,7 +78,7 @@ EXPECTED_CROSS_IDE = [
     ".github/copilot-instructions.md",
 ]
 
-# v0.2 introduced `.nexus/profile.json` as the single source of truth.
+# `.nexus/profile.json` is the committed single source of truth.
 PROFILE_REL = ".nexus/profile.json"
 
 RULE_MAX_SIZE_BYTES = 12_000  # 12KB limit per rule file
@@ -100,103 +100,47 @@ CODEIUMIGNORE_EXPECTED = [
 # --- Tier 1: Component Inventory & Integrity ---
 
 def _check_rules(project_dir: Path) -> dict[str, Any]:
-    """Validate rules exist, are well-formed, and within size limits."""
-    rules_dir = project_dir / ".windsurf" / "rules"
+    """Validate canonical AGENTS.md and report legacy inputs separately."""
+    agents = project_dir / "AGENTS.md"
     issues: list[dict] = []
-    found_rules: list[str] = []
-
-    if not rules_dir.is_dir():
-        # Windsurf rules are optional v0.3 surface — absence is informational,
-        # not a failure. The v0.2 cross-IDE generators (AGENTS.md, .cursor/rules,
-        # copilot-instructions) are checked separately.
-        return {
-            "status": "pass",
-            "found": 0,
-            "expected": 0,
-            "issues": [{"severity": "info", "message": ".windsurf/rules/ not present (optional)"}],
-        }
-
-    # Discover all rule files
-    all_rules = sorted(rules_dir.glob("*.md"))
-    found_rules = [r.name for r in all_rules]
-
-    # Check expected rules
-    for expected in EXPECTED_RULES:
-        if expected not in found_rules:
-            issues.append({
-                "severity": "high",
-                "message": f"Missing required rule: {expected}",
-            })
-
-    # Validate each rule file
-    for rule_path in all_rules:
-        # Size check
-        size = rule_path.stat().st_size
-        if size > RULE_MAX_SIZE_BYTES:
-            issues.append({
-                "severity": "medium",
-                "message": f"Rule {rule_path.name} exceeds 12KB limit ({size:,} bytes)",
-            })
-
-        # Check for activation trigger in frontmatter
-        try:
-            content = rule_path.read_text(encoding="utf-8", errors="replace")
-            if content.startswith("---"):
-                frontmatter_end = content.find("---", 3)
-                if frontmatter_end > 0:
-                    frontmatter = content[3:frontmatter_end]
-                    if "trigger" not in frontmatter.lower() and "activation" not in frontmatter.lower():
-                        # Check for common trigger patterns
-                        has_trigger = any(
-                            pat in frontmatter.lower()
-                            for pat in ["always_on", "model_decision", "glob", "manual"]
-                        )
-                        if not has_trigger:
-                            issues.append({
-                                "severity": "low",
-                                "message": f"Rule {rule_path.name} may be missing activation trigger in frontmatter",
-                            })
-            elif not content.strip().startswith("#"):
-                issues.append({
-                    "severity": "low",
-                    "message": f"Rule {rule_path.name} has no frontmatter or heading",
-                })
-        except OSError:
-            issues.append({
-                "severity": "medium",
-                "message": f"Cannot read rule: {rule_path.name}",
-            })
-
-    # Determine status
-    high_issues = [i for i in issues if i["severity"] == "high"]
-    status = "fail" if high_issues else ("warn" if issues else "pass")
-
+    if not agents.is_file():
+        issues.append({"severity": "high", "message": "Canonical AGENTS.md is missing"})
+    elif agents.stat().st_size > 32_768:
+        issues.append({"severity": "medium", "message": "AGENTS.md exceeds the 32 KiB bounded instruction target"})
+    legacy = project_dir / ".windsurf" / "rules"
+    if legacy.is_dir():
+        issues.append({"severity": "info", "message": "Legacy .windsurf/rules inputs are present for migration review"})
+    status = "fail" if any(i["severity"] == "high" for i in issues) else (
+        "warn" if any(i["severity"] != "info" for i in issues) else "pass"
+    )
     return {
         "status": status,
-        "found": len(found_rules),
-        "expected": len(EXPECTED_RULES),
-        "all_rules": found_rules,
+        "found": int(agents.is_file()),
+        "expected": 1,
+        "all_rules": ["AGENTS.md"] if agents.is_file() else [],
         "issues": issues,
     }
 
 
 def _check_skills(project_dir: Path) -> dict[str, Any]:
     """Validate skills exist and have valid SKILL.md files."""
-    skills_dir = project_dir / ".windsurf" / "skills"
+    skills_dir = project_dir / ".agents" / "skills"
     issues: list[dict] = []
     found_skills: list[str] = []
 
     if not skills_dir.is_dir():
         return {
-            "status": "pass",
+            "status": "warn",
             "found": 0,
             "expected": 0,
-            "issues": [{"severity": "info", "message": ".windsurf/skills/ not present (optional)"}],
+            "issues": [{"severity": "medium", "message": ".agents/skills/ not present"}],
         }
 
     # Discover all skill folders
     for skill_dir in sorted(skills_dir.iterdir()):
         if skill_dir.is_dir() and not skill_dir.name.startswith("."):
+            if not any(skill_dir.iterdir()):
+                continue
             found_skills.append(skill_dir.name)
 
             skill_md = skill_dir / "SKILL.md"
@@ -255,88 +199,32 @@ def _check_skills(project_dir: Path) -> dict[str, Any]:
 
 
 def _check_workflows(project_dir: Path) -> dict[str, Any]:
-    """Validate workflows exist and have valid frontmatter."""
-    wf_dir = project_dir / ".windsurf" / "workflows"
-    issues: list[dict] = []
-    found_wfs: list[str] = []
-
-    if not wf_dir.is_dir():
-        return {
-            "status": "pass",
-            "found": 0,
-            "expected": 0,
-            "issues": [{"severity": "info", "message": ".windsurf/workflows/ not present (optional)"}],
-        }
-
-    # Discover all workflow files
-    all_wfs = sorted(wf_dir.glob("*.md"))
-    found_wfs = [w.name for w in all_wfs]
-
-    for expected in EXPECTED_WORKFLOWS:
-        if expected not in found_wfs:
-            issues.append({
-                "severity": "medium",
-                "message": f"Missing expected workflow: {expected}",
-            })
-
-    # Validate each workflow
-    for wf_path in all_wfs:
-        try:
-            content = wf_path.read_text(encoding="utf-8", errors="replace")
-            if not content.startswith("---"):
-                issues.append({
-                    "severity": "low",
-                    "message": f"Workflow {wf_path.name} missing YAML frontmatter with description",
-                })
-            else:
-                frontmatter_end = content.find("---", 3)
-                if frontmatter_end > 0:
-                    fm = content[3:frontmatter_end].lower()
-                    if "description" not in fm:
-                        issues.append({
-                            "severity": "low",
-                            "message": f"Workflow {wf_path.name} missing 'description' in frontmatter",
-                        })
-        except OSError:
-            issues.append({
-                "severity": "medium",
-                "message": f"Cannot read workflow: {wf_path.name}",
-            })
-
-    high_issues = [i for i in issues if i["severity"] == "high"]
-    status = "fail" if high_issues else ("warn" if issues else "pass")
-
+    """Workflows are Agent Skills; do not count them as a duplicate component."""
     return {
-        "status": status,
-        "found": len(found_wfs),
-        "expected": len(EXPECTED_WORKFLOWS),
-        "all_workflows": found_wfs,
-        "issues": issues,
+        "status": "pass",
+        "found": 0,
+        "expected": 0,
+        "all_workflows": [],
+        "issues": [{"severity": "info", "message": "Reusable workflows are validated as Agent Skills"}],
     }
 
 
 def _check_cross_ide(project_dir: Path) -> dict[str, Any]:
-    """Validate cross-IDE files exist and are consistent."""
+    """Validate provider adapters by managed profile stamp."""
     issues: list[dict] = []
     found_files: list[str] = []
-    project_names: dict[str, str] = {}
+    stamp_hashes: dict[str, str] = {}
 
     for rel_path in EXPECTED_CROSS_IDE:
         full_path = project_dir / rel_path
         if full_path.exists():
             found_files.append(rel_path)
 
-            # Extract project name/description from first meaningful line
             try:
                 content = full_path.read_text(encoding="utf-8", errors="replace")
-                first_line = ""
-                for line in content.splitlines():
-                    stripped = line.strip().lstrip("#").strip()
-                    if stripped and len(stripped) > 5:
-                        first_line = stripped
-                        break
-                if first_line:
-                    project_names[rel_path] = first_line[:100]
+                match = re.search(r"nexus: profile=([a-f0-9]{12})", content)
+                if match:
+                    stamp_hashes[rel_path] = match.group(1)
             except OSError:
                 pass
         else:
@@ -345,21 +233,12 @@ def _check_cross_ide(project_dir: Path) -> dict[str, Any]:
                 "message": f"Missing cross-IDE file: {rel_path}",
             })
 
-    # Check consistency — all files should reference similar project context
-    if len(project_names) >= 2:
-        names_list = list(project_names.values())
-        # Simple check: do they all contain a common substring?
-        common_words = set(names_list[0].lower().split()) if names_list else set()
-        for name in names_list[1:]:
-            common_words &= set(name.lower().split())
-        # Filter out very short/common words
-        meaningful_common = {w for w in common_words if len(w) > 3}
-        if not meaningful_common:
-            issues.append({
-                "severity": "low",
-                "message": "Cross-IDE files may have inconsistent project descriptions",
-                "details": project_names,
-            })
+    if len(set(stamp_hashes.values())) > 1:
+        issues.append({
+            "severity": "medium",
+            "message": "Provider adapters have inconsistent profile stamps",
+            "details": stamp_hashes,
+        })
 
     status = "fail" if not found_files else ("warn" if issues else "pass")
 
@@ -391,10 +270,15 @@ def _check_bootstrap_templates(project_dir: Path) -> dict[str, Any]:
         checked += 1
         try:
             content = tmpl.read_text(encoding="utf-8", errors="replace")
-            if "token-efficiency" not in content.lower() and "00-token-efficiency" not in content:
+            if "AGENTS.md" not in content or ".agents/skills" not in content:
                 issues.append({
                     "severity": "low",
-                    "message": f"Template {tmpl.name} missing reference to token-efficiency rule",
+                    "message": f"Template {tmpl.name} is missing canonical AGENTS.md or Agent Skills guidance",
+                })
+            if ".cursorrules" in content or ".agents/workflows" in content or ".agents/rules" in content:
+                issues.append({
+                    "severity": "medium",
+                    "message": f"Template {tmpl.name} references an obsolete instruction surface",
                 })
         except OSError:
             issues.append({
@@ -411,7 +295,7 @@ def _check_bootstrap_templates(project_dir: Path) -> dict[str, Any]:
 
 
 def _check_profile(project_dir: Path) -> dict[str, Any]:
-    """Validate `.nexus/profile.json` is present and parseable (v0.2+ SoT)."""
+    """Validate `.nexus/profile.json` is present and parseable."""
     path = project_dir / PROFILE_REL
     if not path.exists():
         return {
@@ -508,14 +392,14 @@ def _check_gitignore(project_dir: Path) -> dict[str, Any]:
 
 
 def _check_codeiumignore(project_dir: Path) -> dict[str, Any]:
-    """Validate .codeiumignore excludes large reference files."""
+    """Treat Codeium/Windsurf ignore support as legacy compatibility only."""
     codeiumignore = project_dir / ".codeiumignore"
     issues: list[dict] = []
 
     if not codeiumignore.exists():
         return {
-            "status": "warn",
-            "issues": [{"severity": "medium", "message": ".codeiumignore not found — large files may waste tokens"}],
+            "status": "pass",
+            "issues": [{"severity": "info", "message": "No legacy .codeiumignore present"}],
         }
 
     try:
@@ -581,13 +465,14 @@ def _check_secrets(project_dir: Path) -> dict[str, Any]:
         except OSError:
             continue
 
-    status = "fail" if all_findings else "pass"
+    status = "fail" if all_findings else ("pass" if files_scanned else "info")
     return {
         "status": status,
         "files_scanned": files_scanned,
         "files_skipped": files_skipped,
         "secrets_found": len(all_findings),
         "findings": all_findings[:20],
+        "coverage": "scanned" if files_scanned else "none",
     }
 
 
@@ -641,7 +526,7 @@ def run_security(project_dir: Path) -> dict[str, Any]:
     deps = _check_dependencies(project_dir)
 
     issue_lists = [gitignore["issues"], codeiumignore["issues"], deps["issues"]]
-    all_issues = [i for lst in issue_lists for i in lst]
+    all_issues = [i for lst in issue_lists for i in lst if i.get("severity") != "info"]
     high_count = sum(1 for i in all_issues if i.get("severity") == "high")
     secrets_found = secrets.get("secrets_found", 0)
 
@@ -760,8 +645,8 @@ def _generate_recommendations(
         recs.append({
             "severity": "high",
             "category": "components",
-            "message": "Missing required rules — run /bootstrap-wizard to set up rules",
-            "action": "Run /bootstrap-wizard or manually create .windsurf/rules/ directory",
+            "message": "Missing canonical project instructions",
+            "action": "Run nexus generate to refresh AGENTS.md",
         })
 
     for issue in components.get("rules", {}).get("issues", []):
@@ -855,7 +740,7 @@ def _calculate_score(components: dict, security: dict, usage: dict) -> int:
     weights = {"high": 10, "medium": 5, "low": 2, "critical": 20}
 
     # Component issues. ``info`` items don't dock the score (they're context,
-    # not problems) — used for "Windsurf surface absent (optional)" notes.
+    # not problems) — used for legacy migration notes.
     for section in ["profile", "rules", "skills", "workflows", "cross_ide", "templates"]:
         section_data = components.get(section, {})
         for issue in section_data.get("issues", []):
@@ -957,7 +842,7 @@ def run_health(
 ) -> None:
     """Route to the appropriate health subcommand."""
     fmt = OutputFormat(output_format)
-    # Auto-detect project root by walking up to find .windsurf/ or .git/
+    # Auto-detect the project root from canonical repository markers.
     raw_path = Path(project_dir).resolve()
     proj_path = find_project_root(raw_path)
 

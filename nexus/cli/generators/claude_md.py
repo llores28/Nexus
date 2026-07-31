@@ -13,29 +13,15 @@ from nexus.cli.generators import GeneratedFile, stamp
 def _build_body(profile: Profile) -> str:
     h = hash_profile(profile)
     lines: list[str] = [stamp(h, "claude"), ""]
-
-    lines.append(f"# Claude Code instructions -- {profile.project_name}")
+    lines += [f"# Claude adapter — {profile.project_name}", ""]
+    lines.append("@AGENTS.md")
+    lines.append("")
+    lines.append("Project skills are discovered from `.claude/skills/*/SKILL.md`.")
     lines.append("")
 
-    lines.append("## Stack")
-    if profile.languages:
-        lines.append(f"- Languages: {', '.join(profile.languages)}")
-    if profile.frameworks:
-        lines.append(f"- Frameworks: {', '.join(profile.frameworks)}")
-    if profile.package_managers:
-        lines.append(f"- Package managers: {', '.join(profile.package_managers)}")
-    if profile.test_runner:
-        lines.append(f"- Test runner: `{profile.test_runner}`")
-    if profile.ci:
-        lines.append(f"- CI: {profile.ci}")
-    if profile.deployment:
-        lines.append(f"- Deployment: {profile.deployment}")
-    lines.append(f"- Tier: {profile.tier}")
-    lines.append("")
-
-    rules = select_rules(profile, target="claude")
+    rules = [r for r in select_rules(profile, target="claude") if r.targets is not None]
     if rules:
-        lines.append("## Constraints")
+        lines.append("## Claude-specific deltas")
         lines.append("")
         for r in rules:
             scope = f" (scope: `{', '.join(r.applies_to)}`)" if r.applies_to else ""
@@ -43,12 +29,7 @@ def _build_body(profile: Profile) -> str:
             lines.append(f"- {r.text}{scope}{sev}")
         lines.append("")
 
-    lines.append("## Project state")
-    lines.append("")
-    lines.append("- Read `.nexus/state-summary.md` at session start for current tasks and recent commits.")
-    lines.append('- Track tasks via `nexus journal next add "<task>"`; blockers via `nexus journal blocker add "<text>"`.')
-    lines.append('- Architectural decisions go in `docs/decisions/` via `nexus journal decision add "<title>"`.')
-    lines.append("- Run `nexus doctor` to check rule drift and journal health.")
+    lines.append("Use `nexus journal handoff` for compact cross-agent state.")
 
     return "\n".join(lines)
 

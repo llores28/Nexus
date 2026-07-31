@@ -45,13 +45,16 @@ def _build_body(profile: Profile) -> str:
     lines.append("## Project state")
     lines.append("")
     lines.append(
-        "Recent commits, queued tasks, and blockers live in `.nexus/state-summary.md` "
-        "(read this first). Update via:"
+        "Read `.nexus/state-summary.md` first. It is an at-most-80-line handoff with "
+        "intent, changes, decisions, and next steps/blockers. Update via:"
     )
     lines.append("")
     lines.append("```bash")
     lines.append('nexus journal next add "<task>"      # queue work')
     lines.append('nexus journal blocker add "<text>"   # record a blocker')
+    lines.append('nexus journal intent set "<goal>"     # anchor current intent')
+    lines.append('nexus journal decision note "<text>"  # record a compact decision')
+    lines.append("nexus journal handoff                # emit compact state")
     lines.append('nexus journal log "<note>"           # append to journal')
     lines.append("nexus journal status                # show current state")
     lines.append("```")
@@ -59,6 +62,7 @@ def _build_body(profile: Profile) -> str:
     lines.append(
         "Run `nexus doctor` to check rule drift, journal health, and missing IDE files."
     )
+    lines.append("Use `.agents/skills/*/SKILL.md` just in time; do not preload every skill.")
 
     return "\n".join(lines)
 

@@ -129,10 +129,10 @@ def truncate_output(text: str, max_chars: int = 500) -> str:
 
 
 def find_project_root(start: Optional[Path] = None) -> Path:
-    """Walk up from start to find the project root (contains .windsurf/ or .git/)."""
+    """Walk up from start to find the project root."""
     current = start or Path.cwd()
     for parent in [current] + list(current.parents):
-        if (parent / ".windsurf").is_dir() or (parent / ".git").is_dir():
+        if (parent / "AGENTS.md").is_file() or (parent / ".git").is_dir():
             return parent
     return current
 

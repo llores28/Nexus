@@ -1,82 +1,58 @@
 # Nexus CLI Toolkit
 
-Focused "sniper agent" CLI tools for Cascade — smoketesting, debugging, research, webscraping, container validation, and tool scaffolding.
+Nexus is a provider-neutral project-local CLI for OpenAI Codex, Devin, Claude,
+Cursor, GitHub Copilot, and agent extensions hosted by VS Code.
 
-## Quick Start
+## Onboarding
 
-```bash
-pip install -r nexus/cli/requirements.txt
-python nexus/cli/bs_cli.py --help
+Use the repository's pinned `v0.3.0` setup script. Download and inspect the
+script before running it; do not pipe it into a shell. The installer creates
+`<project>/.venv`, installs Nexus there, and invokes that environment's
+`nexus` executable.
+
+The tag-based commands are release instructions: until the immutable `v0.3.0`
+tag is published, use a locally built wheel through `-Source` / `--source`.
+
+For local or offline validation, both installers accept an explicit package
+source:
+
+```powershell
+.\setup.ps1 -ProjectDir C:\path\to\project -Source C:\path\to\nexus_bootstrap-0.3.0-py3-none-any.whl -Template team -AcceptDefaults
 ```
 
-## Design Principles
+```bash
+./setup.sh --project-dir /path/to/project --source /path/to/nexus_bootstrap-0.3.0-py3-none-any.whl --template team --yes
+```
 
-- **Structured JSON output** by default (`--format json`) — model-friendly, minimal tokens
-- **`--format human`** for rich terminal output via `rich`
-- **One tool = one purpose** (sniper agent pattern, prevents context rot)
-- **Security by default** — input validation, path sanitization, SSRF protection, audit trail
-- **Lazy imports** — heavy deps only loaded when the subcommand needs them
+PyPI installation is intentionally undocumented until the published package is
+independently verified.
 
-## Commands
+## Core commands
 
 | Command | Purpose |
 |---|---|
-| `bs_cli.py prereqs` | Check prerequisites (Docker, MCP, extensions, Python, Git) |
-| `bs_cli.py smoketest` | Run tiered smoke tests (quick or full) |
-| `bs_cli.py debug <sub>` | Debug tools: logs, trace, deps, env, ports, secrets-scan |
-| `bs_cli.py research <sub>` | Research: docs search, package info, changelog, compare |
-| `bs_cli.py scrape <sub>` | Webscrape: page, api, links, docs crawl |
-| `bs_cli.py scaffold <name>` | Generate a new CLI tool from template |
-| `bs_cli.py local-env <sub>` | Docker container validation: init, build, up, down, validate |
-| `bs_cli.py health <sub>` | Nexus health monitoring: check, components, security, usage, report |
-| `bs_cli.py journal <sub>` | Cross-session state tracking with auto-rolling sessions, daily rotation, drift detection, MADR ADRs, and cross-tool surface (see `tools/journal.py`) |
-| `bs_cli.py supply-chain <sub>` | Detect compromised npm packages, system IOCs, run npm audit, review advisories |
-| `bs_cli.py init [--upgrade]` | Bootstrap or upgrade a project with Nexus (runs health + journal-health on upgrade) |
+| `nexus init --dry-run` | Preview onboarding, upgrade, collisions, and legacy migration |
+| `nexus init --upgrade --yes` | Apply an unattended deterministic upgrade |
+| `nexus doctor --consumer all --deep` | Authoritative readiness and ownership check |
+| `nexus context audit` | Effective context, duplication, ignore, and observation audit |
+| `nexus context map [QUERY]` | Bounded repository inventory or optional Repomix map |
+| `nexus context mask` | Deterministic redacted test, lint, or build digest |
+| `nexus context ignores` | Audit or apply tool-specific ignore blocks |
+| `nexus context route` | Provider-neutral capability recommendation |
+| `nexus smoketest --isolated-install` | Test and verify the built wheel in a temporary venv |
+| `nexus journal handoff` | Compact four-field cross-agent handoff |
+| `nexus health check` | Legacy component and security inventory |
 
-### Journal subcommands (most-used)
+JSON is the default for machine-oriented commands; use `--format human` when
+available. Commands use subprocess argument lists and never `shell=True`.
 
-```
-journal status                   # current state
-journal log "<msg>"              # add entry (auto-rolls stale sessions)
-journal next add "<task>"        # queue work
-journal blocker add "<text>"     # record a blocker
-journal decision add "<title>"   # MADR ADR in docs/decisions/
-journal health [refresh]         # detect / fix drift vs git + PRD
-journal blame <file>             # cross-reference file in git + journal
-journal export                   # regen state-summary.md + dashboard
-journal setup-hooks [--force]    # install/upgrade git hooks (post-commit + pre-push)
-journal init-agents              # install AGENTS.md block + .cursor/rules/state.mdc
-```
+## Installed project surfaces
 
-Test suite: `python -m pytest tests/` (51 cases, ~0.7s)
+- `AGENTS.md` is the canonical shared instruction file.
+- `.agents/skills/*/SKILL.md` is the canonical editable workflow surface.
+- `.claude/skills` is a Nexus-owned byte-equivalent Claude projection.
+- `CLAUDE.md`, `.cursor/rules`, `.github/*`, and optional `REVIEW.md` contain
+  consumer-specific deltas only.
+- `.nexus/install-manifest.json` records ownership and hashes for safe upgrades.
 
-## Exit Codes
-
-- `0` — success
-- `1` — failure
-- `2` — partial (details in output)
-
-## Preview Strategy (3-tier)
-
-1. **Dev preview**: Use Cascade's `browser_preview` tool (zero config, 1 tool call)
-2. **Container validation**: `local-env build` → `local-env up` → `browser_preview`
-3. **Shareable**: Docker Desktop ngrok/Release Share extensions (GUI, user-driven)
-
-## Security
-
-- All paths validated against project root (no traversal)
-- All URLs checked for private IPs (SSRF protection)
-- All subprocess calls use args arrays (no `shell=True`)
-- Audit log: `.cache/bs-cli/audit.jsonl`
-- Secret detection: `debug secrets-scan`
-- Scaffold template enforces security constraints
-
-## Caching
-
-- Research results: `.cache/research/` (24h TTL)
-- Scrape results: `.cache/scrape/` (1h pages, 24h doc crawls)
-- Add `.cache/` to `.gitignore`
-
-## For Existing Projects
-
-Use `/migrate-toolkit` workflow to add this toolkit to a project that already ran the old bootstrap. Zero file conflicts — the toolkit is purely additive.
+Run the tests with `python -m pytest tests/`.

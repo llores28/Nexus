@@ -29,6 +29,19 @@ BOOTSTRAP_FILENAME = "BOOTSTRAP.md"
 STATE_JSON_REL = ".nexus/state.json"
 
 
+def _generator_targets(consumers: tuple[str, ...]) -> list[str]:
+    targets = ["agents_md"]
+    if "claude" in consumers:
+        targets.append("claude")
+    if "cursor" in consumers:
+        targets.append("cursor")
+    if "copilot" in consumers:
+        targets.append("copilot")
+    if "devin-review" in consumers:
+        targets.append("devin-review")
+    return targets
+
+
 def _print_banner(action: str) -> None:
     click.echo("\n" + "#" * 60)
     click.echo(f"#  Nexus init -- {action}")
@@ -73,8 +86,8 @@ def _write_template(template_src: Path, project_dir: Path, tier: str) -> Path:
     header = (
         f"# Nexus Bootstrap Prompt -- {tier.title()} tier\n"
         f"#\n"
-        f"# Paste the content below into your AI assistant (Cascade, Claude Code,\n"
-        f"# Cursor, etc.) to generate this project's operating system.\n"
+        f"# Provide the content below to OpenAI Codex, Devin, Claude, Cursor,\n"
+        f"# Copilot, or another coding agent to generate the project operating system.\n"
         f"#\n"
         f"# Source template: {template_src.name}\n"
         f"\n"
@@ -94,7 +107,11 @@ def _persist_tier(project_dir: Path, selection: dict[str, Any]) -> None:
     _save_state(project_dir, state)
 
 
-def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]:
+def _ensure_profile_and_generate(
+    project_dir: Path,
+    tier: str,
+    consumers: tuple[str, ...],
+) -> dict[str, int]:
     """Write/refresh `.nexus/profile.json` and run all IDE-file generators.
 
     Idempotent: re-deriving from detection produces a stable profile, and
@@ -106,6 +123,7 @@ def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]
     """
     from nexus.cli.profile import from_detection, hash_profile, load, save
     from nexus.cli.generators import run_all
+    from nexus.cli.installation import apply_generated_files
 
     existing = load(project_dir)
     project_name = existing.project_name if existing else project_dir.name
@@ -123,10 +141,23 @@ def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]
         f"        rules: {len(profile.rules)} total ({user_rules} user-authored, preserved across re-detect)"
     )
 
-    results = run_all(profile, project_dir)
-    counts = {"created": 0, "updated": 0, "unchanged": 0, "inserted": 0}
+    planned = run_all(
+        profile,
+        project_dir,
+        targets=_generator_targets(consumers),
+        dry_run=True,
+    )
+    install_actions = apply_generated_files(
+        project_dir,
+        (generated for generated, _ in planned),
+        tier=tier,
+        consumers=consumers,
+    )
+    results = list(zip((generated for generated, _ in planned), install_actions))
+    counts = {"created": 0, "updated": 0, "unchanged": 0, "inserted": 0, "preserve": 0}
     changed: list[tuple[Path, str, str]] = []
-    for f, action in results:
+    for f, install_action in results:
+        action = install_action.action
         counts[action] = counts.get(action, 0) + 1
         if action == "unchanged":
             continue
@@ -142,11 +173,45 @@ def _ensure_profile_and_generate(project_dir: Path, tier: str) -> dict[str, int]
             click.echo(f"    [{action:>9}] {rel}  ({target})")
     else:
         click.echo("\n  IDE files already up to date.")
+
+    from nexus.cli.installation import ensure_gitignore, install_skills, record_managed_files
+
+    gitignore_action = ensure_gitignore(project_dir)
+    if gitignore_action.action != "unchanged":
+        click.echo(f"\n  [{gitignore_action.action:>9}] .gitignore (Nexus safety block)")
+
+    skill_result = install_skills(
+        project_dir,
+        consumers=consumers,
+        tier=tier,
+        dry_run=False,
+    )
+    changed_skills = [
+        item for item in skill_result["actions"] if item["action"] != "unchanged"
+    ]
+    if changed_skills:
+        click.echo("\n  Installed project skills:")
+        for item in changed_skills:
+            suffix = f" -- {item['detail']}" if item.get("detail") else ""
+            click.echo(f"    [{item['action']:>9}] {item['path']}{suffix}")
+    record_managed_files(
+        project_dir,
+        [project_dir / ".gitignore", project_dir / ".nexus" / "profile.json"],
+    )
     return counts
 
 
 def _load_existing_tier(project_dir: Path) -> Optional[str]:
-    """Read tier from existing state.json. Returns None if file or field missing."""
+    """Read tier from profile, install manifest, then legacy runtime state."""
+    from nexus.cli.installation import load_manifest
+    from nexus.cli.profile import load
+
+    profile = load(project_dir)
+    if profile and profile.tier in ("fast", "team", "enterprise"):
+        return profile.tier
+    manifest = load_manifest(project_dir)
+    if manifest and manifest.get("tier") in ("fast", "team", "enterprise"):
+        return str(manifest["tier"])
     sj = project_dir / STATE_JSON_REL
     if not sj.exists():
         return None
@@ -158,8 +223,13 @@ def _load_existing_tier(project_dir: Path) -> Optional[str]:
         return None
 
 
-def _do_fresh(pd: Path, output_format: str, template: Optional[str],
-              accept_defaults: bool = False) -> dict[str, Any]:
+def _do_fresh(
+    pd: Path,
+    output_format: str,
+    template: Optional[str],
+    consumers: tuple[str, ...],
+    accept_defaults: bool = False,
+) -> dict[str, Any]:
     """Fresh init: wizard (or --template), write BOOTSTRAP.md, return selection."""
     from nexus.cli.tools import wizard
 
@@ -200,20 +270,34 @@ def _do_fresh(pd: Path, output_format: str, template: Optional[str],
         gr = _find_git_root(pd)
         if gr and not _hooks_installed(gr):
             _cmd_setup_hooks(pd, "human")
-    _cmd_session_start(pd, "human")
+    _cmd_session_start(
+        pd,
+        "human",
+        offer_git_init=not accept_defaults,
+        offer_hooks=not accept_defaults,
+    )
 
     _persist_tier(pd, selection)
-    _ensure_profile_and_generate(pd, selection["tier"])
+    _ensure_profile_and_generate(pd, selection["tier"], consumers)
 
-    # Install the journal-managed AGENTS.md state block + Cursor state rule
-    # + state-summary.md. Distinct managed-block markers from the v0.2
+    # Install the journal-managed AGENTS.md state block + state-summary.md.
+    # Distinct managed-block markers from the profile
     # generators, so they coexist in AGENTS.md without overwriting each other.
     click.echo("\n  Installing journal cross-tool surface...")
     _cmd_init_agents(pd, "human")
+    from nexus.cli.installation import record_managed_files
+    record_managed_files(pd, [pd / "AGENTS.md"])
     return selection
 
 
-def _do_upgrade(pd: Path, refresh: bool, template: Optional[str]) -> dict[str, Any]:
+def _do_upgrade(
+    pd: Path,
+    refresh: bool,
+    template: Optional[str],
+    consumers: tuple[str, ...],
+    output_format: str,
+    accept_defaults: bool = False,
+) -> dict[str, Any]:
     """Upgrade: reuse tier (or accept --template override), re-validate hooks.
 
     NEVER touches BOOTSTRAP.md unless --refresh is passed (or it doesn't exist
@@ -227,15 +311,16 @@ def _do_upgrade(pd: Path, refresh: bool, template: Optional[str]) -> dict[str, A
     else:
         existing_tier = _load_existing_tier(pd)
         if not existing_tier:
-            click.echo(
-                "\n  ERROR: --upgrade requires an existing bootstrap_tier in "
-                ".nexus/state.json, but none was found.\n"
-                "  Either run `nexus init` (no --upgrade) for a fresh setup,\n"
-                "  or pass --template <fast|team|enterprise> to skip the wizard."
-            )
-            raise click.Abort()
-        selection = wizard.apply_tier_explicit(existing_tier)
-        click.echo(f"\n  Reusing previously chosen tier: {existing_tier}")
+            if accept_defaults or output_format != "human":
+                raise click.ClickException(
+                    "Upgrade tier is unknown. Pass --template fast, team, or enterprise "
+                    "for unattended migration."
+                )
+            selection = wizard.run_wizard(pd, output_format)
+            click.echo(f"\n  Selected migration tier: {selection['tier']}")
+        else:
+            selection = wizard.apply_tier_explicit(existing_tier)
+            click.echo(f"\n  Reusing previously chosen tier: {existing_tier}")
 
     bootstrap_path = pd / BOOTSTRAP_FILENAME
     if refresh or not bootstrap_path.exists():
@@ -255,8 +340,98 @@ def _do_upgrade(pd: Path, refresh: bool, template: Optional[str]) -> dict[str, A
         click.echo("\n  (no git repo -- skipping hook validation)")
 
     _persist_tier(pd, selection)
-    _ensure_profile_and_generate(pd, selection["tier"])
+    _ensure_profile_and_generate(pd, selection["tier"], consumers)
+
+    from nexus.cli.tools.context import migrate_legacy_skills
+    preview = migrate_legacy_skills(pd, apply=False)
+    migratable = [item for item in preview["items"] if item["status"] == "would-create"]
+    if preview["items"]:
+        click.echo("\n  Legacy Windsurf -> open Agent Skills migration preview:")
+        for item in preview["items"]:
+            click.echo(f"    [{item['status']:>12}] {item['source']} -> {item['target']}")
+        apply_migration = accept_defaults or (
+            bool(migratable) and click.confirm(
+                "\n  Create the non-conflicting .agents/skills entries now?",
+                default=True,
+            )
+        )
+        if apply_migration:
+            result = migrate_legacy_skills(pd, apply=True)
+            from nexus.cli.installation import install_skills
+            install_skills(pd, consumers=consumers, tier=selection["tier"])
+            click.echo(
+                f"    [ok] created {result['created']} skill(s); "
+                f"consolidated {result['consolidated']} legacy duplicate(s); "
+                f"left {result['collisions']} collision(s) untouched"
+            )
+            click.echo("    Legacy sources retained; remove them only after validating canonical skills.")
     return selection
+
+
+def _run_init_dry_run(
+    pd: Path,
+    *,
+    is_upgrade: bool,
+    template: Optional[str],
+    output_format: str,
+    accept_defaults: bool,
+    consumers: tuple[str, ...],
+) -> str:
+    from nexus.cli.generators import run_all
+    from nexus.cli.installation import apply_generated_files, ensure_gitignore, install_skills
+    from nexus.cli.profile import from_detection, load
+    from nexus.cli.tools import wizard
+    from nexus.cli.tools.context import migrate_legacy_skills
+
+    tier = template or (_load_existing_tier(pd) if is_upgrade else None)
+    if tier is None:
+        if accept_defaults or output_format != "human":
+            raise click.ClickException(
+                "Dry-run needs --template for a new or unclassified unattended project."
+            )
+        tier = wizard.run_wizard(pd, output_format)["tier"]
+    current = load(pd)
+    profile = from_detection(
+        pd,
+        tier=tier,
+        project_name=current.project_name if current else pd.name,
+    )
+    generated = run_all(
+        profile,
+        pd,
+        targets=_generator_targets(consumers),
+        dry_run=True,
+    )
+    generated_actions = apply_generated_files(
+        pd,
+        (item for item, _ in generated),
+        tier=tier,
+        consumers=consumers,
+        dry_run=True,
+    )
+    skills = install_skills(
+        pd,
+        consumers=consumers,
+        tier=tier,
+        dry_run=True,
+    )
+    click.echo(f"\n  Dry-run plan: tier={tier}, consumers={','.join(consumers)}")
+    ignore_action = ensure_gitignore(pd, dry_run=True)
+    click.echo(f"    [{ignore_action.action:>9}] {ignore_action.path}")
+    for item, action in zip((item for item, _ in generated), generated_actions):
+        suffix = f" -- {action.detail}" if action.detail else ""
+        click.echo(f"    [{action.action:>9}] {item.path.relative_to(pd)}{suffix}")
+    for item in skills["actions"]:
+        suffix = f" -- {item['detail']}" if item.get("detail") else ""
+        click.echo(f"    [{item['action']:>9}] {item['path']}{suffix}")
+    legacy = migrate_legacy_skills(pd, apply=False)
+    for item in legacy.get("items", []):
+        click.echo(f"    [{item['status']:>9}] {item['source']} -> {item['target']}")
+    legacy_rules = pd / ".windsurf" / "rules"
+    if legacy_rules.is_dir():
+        click.echo("    [   review] .windsurf/rules/* -> manual AGENTS.md/profile candidates")
+    click.echo("\n  No files were written.")
+    return tier
 
 
 def run_init(
@@ -266,9 +441,17 @@ def run_init(
     refresh: bool = False,
     template: Optional[str] = None,
     accept_defaults: bool = False,
+    dry_run: bool = False,
+    consumers: str = "all",
 ) -> None:
     """Bootstrap or upgrade the current project with Nexus."""
     pd = Path(project_dir).resolve()
+    from nexus.cli.installation import MANIFEST_REL, parse_consumers
+
+    try:
+        selected_consumers = parse_consumers(consumers)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if output_format != "human" and template is None and not upgrade:
         emit(make_result(
@@ -278,25 +461,76 @@ def run_init(
         ), OutputFormat(output_format))
         raise click.Abort()
 
-    if refresh and not upgrade and not (pd / STATE_JSON_REL).exists():
+    if refresh and not upgrade and not _load_existing_tier(pd):
         click.echo("\n  --refresh has no effect without --upgrade or an existing project. Ignoring.")
         refresh = False
 
-    state_present = (pd / STATE_JSON_REL).exists()
-    is_upgrade = upgrade or state_present
+    has_nexus_artifacts = any(
+        path.exists()
+        for path in (
+            pd / ".nexus/profile.json",
+            pd / MANIFEST_REL,
+            pd / STATE_JSON_REL,
+            pd / ".windsurf",
+        )
+    ) or "<!-- nexus:" in (
+        (pd / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
+        if (pd / "AGENTS.md").is_file() else ""
+    )
+    is_upgrade = upgrade or has_nexus_artifacts
+
+    if not is_upgrade and accept_defaults and template is None:
+        raise click.ClickException(
+            "Unattended fresh setup requires --template fast, team, or enterprise."
+        )
 
     _print_banner("upgrade" if is_upgrade else "fresh setup")
     _gate_prereqs(output_format)
 
+    if dry_run:
+        _run_init_dry_run(
+            pd,
+            is_upgrade=is_upgrade,
+            template=template,
+            output_format=output_format,
+            accept_defaults=accept_defaults,
+            consumers=selected_consumers,
+        )
+        return
+
     if is_upgrade:
-        selection = _do_upgrade(pd, refresh=refresh, template=template)
+        click.echo("\n  Upgrade plan (preview before applying):")
+        preview_tier = _run_init_dry_run(
+            pd,
+            is_upgrade=True,
+            template=template,
+            output_format=output_format,
+            accept_defaults=accept_defaults,
+            consumers=selected_consumers,
+        )
+        if template is None and _load_existing_tier(pd) is None:
+            template = preview_tier
+
+    if is_upgrade:
+        selection = _do_upgrade(pd, refresh=refresh, template=template,
+                                consumers=selected_consumers,
+                                output_format=output_format,
+                                accept_defaults=accept_defaults)
     else:
         selection = _do_fresh(pd, output_format=output_format, template=template,
+                              consumers=selected_consumers,
                               accept_defaults=accept_defaults)
 
     click.echo("\n  Running health check...")
     from nexus.cli.tools.health import run_health
     run_health(subcommand="check", output_format="human", project_dir=str(pd))
+    from nexus.cli.tools.doctor import diagnose
+    readiness = diagnose(pd, deep=True, consumer="all")
+    if readiness["status"] == "fail":
+        raise click.ClickException(
+            "Nexus was installed, but required post-install diagnostics failed. "
+            "Run `nexus doctor --consumer all --deep` for details."
+        )
 
     # Journal staleness/drift check. On upgrade we offer to auto-refresh;
     # on fresh setups state.json doesn't exist yet so this is a quick "missing"
@@ -363,13 +597,18 @@ def run_init(
     click.echo("=" * 60)
     click.echo("\n  What was set up:")
     click.echo("    - .nexus/profile.json (single source of truth — edit to customize rules)")
-    click.echo("    - AGENTS.md, CLAUDE.md (cross-tool conventions)")
-    click.echo("    - .cursor/rules/*.mdc (Cursor)")
-    click.echo("    - .github/copilot-instructions.md + .github/instructions/ (Copilot)")
+    click.echo("    - AGENTS.md (canonical shared instructions)")
+    click.echo("    - .agents/skills/*/SKILL.md (canonical just-in-time workflows)")
+    if "claude" in selected_consumers:
+        click.echo("    - CLAUDE.md + .claude/skills/* (Claude-native projection)")
+    if "cursor" in selected_consumers:
+        click.echo("    - .cursor/rules/*.mdc (Cursor-only deltas)")
+    if "copilot" in selected_consumers:
+        click.echo("    - .github/copilot-instructions.md + .github/instructions/ (Copilot deltas)")
     click.echo(f"    - {BOOTSTRAP_FILENAME} (optional narrative prompt for richer AI customization)")
     click.echo("\n  Next steps:")
-    click.echo("    1. Review the generated AGENTS.md and CLAUDE.md.")
-    click.echo("    2. Run `nexus doctor` to verify everything is in sync.")
+    click.echo("    1. Review the generated AGENTS.md and provider adapters.")
+    click.echo("    2. Run `nexus doctor --consumer all --deep` to verify discovery.")
     click.echo("    3. Add custom rules: edit .nexus/profile.json (rules with nexus_managed=False")
     click.echo("       are preserved across re-runs), then `nexus generate`.")
     click.echo("    4. Track progress: `nexus journal status`.")

@@ -4,7 +4,7 @@ Project Journal Tool — cross-session project state tracking.
 Subcommands:
   session-start   — start a new session, show last state, offer git init if missing
   session-end     — summarize changes (diff-based), prompt for next steps, write state
-  log             — append a one-line event (non-interactive, Cascade-friendly)
+  log             — append a one-line event (non-interactive, agent-friendly)
                     Auto-rolls the session if it is stale (idle >4h, new UTC date,
                     or branch changed) so session_log stays populated even when
                     callers never invoke session-end.
@@ -44,9 +44,8 @@ DIFFS_DIR = ".cache/bs-cli/diffs"
 HOOK_LOG = ".cache/bs-cli/hook.log"
 HOOK_LOG_MAX_BYTES = 1 * 1024 * 1024  # 1 MB cap; rotate to hook.log.1 on overflow
 
-# Cross-tool integration files (managed by `journal init-agents`)
+# Cross-tool integration file (managed by `journal init-agents`)
 AGENTS_MD = "AGENTS.md"
-CURSOR_RULE = ".cursor/rules/state.mdc"
 NEXUS_AGENTS_BEGIN = "<!-- nexus:state:begin -->"
 NEXUS_AGENTS_END = "<!-- nexus:state:end -->"
 
@@ -54,6 +53,7 @@ MAX_DONE_ITEMS = 20  # rendered cap in state.md
 MAX_SESSION_LOG = 50
 MAX_SUMMARY_DONE = 15  # entries shown in state-summary.md
 MAX_DONE_KEEP = 100  # storage cap on state.json["done"] (daily files are the system of record)
+MAX_SUMMARY_LINES = 80
 SESSION_IDLE_HOURS = 4.0  # auto-roll session after this much idle time
 HOOK_VERSION = 2  # bump when hook templates change incompatibly
 
@@ -117,6 +117,8 @@ def _git_run(args: list[str], cwd: Path, timeout: int = 10) -> tuple[int, str, s
             cwd=str(cwd),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
@@ -501,7 +503,7 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
     """Load .nexus/state.json, returning defaults if missing."""
     state_path = project_dir / STATE_JSON
     defaults: dict[str, Any] = {
-        "version": 1,
+        "version": 2,
         "project": project_dir.name,
         "status": "IN PROGRESS",
         "session_number": 0,
@@ -511,6 +513,8 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
         "done": [],
         "next": [],
         "blockers": [],
+        "intent": "",
+        "decision_notes": [],
         "session_log": [],
         "last_updated": None,
         "bootstrap_tier": None,
@@ -522,6 +526,7 @@ def _load_state(project_dir: Path) -> dict[str, Any]:
         data = json.loads(state_path.read_text(encoding="utf-8"))
         for k, v in defaults.items():
             data.setdefault(k, v)
+        data["version"] = 2
         return data
     except (json.JSONDecodeError, OSError):
         return defaults
@@ -557,7 +562,7 @@ def _render_state_md(state: dict[str, Any]) -> str:
     lines = [
         "# Project State",
         f"_Last updated: {state.get('last_updated', 'unknown')} · "
-        f"Session {state.get('session_number', 0)}{branch_suffix} · nexus-journal v0.2_",
+        f"Session {state.get('session_number', 0)}{branch_suffix} · nexus-journal v0.3_",
         "",
         f"## Status: {state.get('status', 'UNKNOWN')}",
         "",
@@ -668,14 +673,20 @@ def _hook_status(hook_path: Path) -> str:
     return "foreign"
 
 
-def _cmd_session_start(project_dir: Path, output_format: str) -> None:
+def _cmd_session_start(
+    project_dir: Path,
+    output_format: str,
+    *,
+    offer_git_init: bool = True,
+    offer_hooks: bool = True,
+) -> None:
     """Start a new session."""
     import click
 
     state = _load_state(project_dir)
     git_root = _resolve_git_root(project_dir)
 
-    if git_root is None:
+    if git_root is None and offer_git_init:
         git_root = _offer_git_init(project_dir)
 
     # If a previous session is still open and stale, close it first so the
@@ -697,7 +708,13 @@ def _cmd_session_start(project_dir: Path, output_format: str) -> None:
 
     # Offer to install git hooks if a git repo exists but hooks are missing.
     # Human format only — non-interactive callers (json/yaml) skip the prompt.
-    if git_root and output_format == "human" and not _hooks_installed(git_root) and git_root == _find_git_root(project_dir):
+    if (
+        offer_hooks
+        and git_root
+        and output_format == "human"
+        and not _hooks_installed(git_root)
+        and git_root == _find_git_root(project_dir)
+    ):
         if click.confirm(
             "\n  Auto-tracking hooks not installed. Install them now?\n"
             "  (post-commit logs every commit; pre-push regenerates the dashboard)",
@@ -1057,12 +1074,83 @@ def _cmd_blocker(project_dir: Path, args: tuple, output_format: str) -> None:
              OutputFormat(output_format))
 
 
+def _cmd_intent(project_dir: Path, args: tuple, output_format: str) -> None:
+    """Set, show, or clear the current high-level intent."""
+    state = _load_state(project_dir)
+    action = args[0] if args else "show"
+    if action == "set":
+        value = " ".join(args[1:]).strip()
+        if not value:
+            emit(make_result("journal-intent", Status.FAIL,
+                             message='Usage: journal intent set "<goal>"'),
+                 OutputFormat(output_format))
+            return
+        state["intent"] = value
+        _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
+        emit(make_result("journal-intent-set", Status.PASS,
+                         message="Intent updated.", details={"intent": value}),
+             OutputFormat(output_format))
+    elif action == "clear":
+        state["intent"] = ""
+        _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
+        emit(make_result("journal-intent-clear", Status.PASS, message="Intent cleared."),
+             OutputFormat(output_format))
+    elif action == "show":
+        emit(make_result("journal-intent-show", Status.INFO,
+                         details={"intent": state.get("intent", "")}),
+             OutputFormat(output_format))
+    else:
+        emit(make_result("journal-intent", Status.FAIL,
+                         message=f"Unknown action: {action}. Use set|show|clear."),
+             OutputFormat(output_format))
+
+
+def _handoff_payload(state: dict[str, Any]) -> dict[str, Any]:
+    """Return the stable four-field state-compaction payload."""
+    return {
+        "intent": state.get("intent", ""),
+        "changes_made": state.get("done", [])[-MAX_SUMMARY_DONE:],
+        "decisions_taken": state.get("decision_notes", [])[-10:],
+        "next_steps_and_blockers": {
+            "next_steps": state.get("next", []),
+            "blockers": state.get("blockers", []),
+        },
+    }
+
+
+def _cmd_handoff(project_dir: Path, output_format: str) -> None:
+    """Export and emit the compact cross-agent handoff payload."""
+    state_path = project_dir / STATE_JSON
+    if not state_path.exists():
+        emit(make_result("journal-handoff", Status.WARN,
+                         message="Journal is not initialized.",
+                         details={"initialized": False}),
+             OutputFormat(output_format))
+        return
+    state = _load_state(project_dir)
+    _write_state_summary(project_dir, state, _resolve_git_root(project_dir))
+    emit(make_result("journal-handoff", Status.PASS,
+                     details=_handoff_payload(state)), OutputFormat(output_format))
+
+
 def _cmd_status(project_dir: Path, output_format: str) -> None:
     """Display current project state."""
     import click
 
+    state_path = project_dir / STATE_JSON
     state = _load_state(project_dir)
     md_path = project_dir / STATE_MD
+
+    if not state_path.exists():
+        emit(make_result(
+            "journal-status",
+            Status.WARN,
+            message="Journal is not initialized. Run 'nexus journal session-start'.",
+            details={"initialized": False, "state_path": STATE_JSON},
+        ), OutputFormat(output_format))
+        return
 
     if output_format == "human":
         if md_path.exists():
@@ -1076,6 +1164,7 @@ def _cmd_status(project_dir: Path, output_format: str) -> None:
             message=f"Project: {state.get('project', '?')} | Status: {state.get('status', '?')} | Session: {state.get('session_number', 0)}",
             details={
                 "status": state.get("status"),
+                "initialized": True,
                 "session": state.get("session_number"),
                 "last_updated": state.get("last_updated"),
                 "done_count": len(state.get("done", [])),
@@ -1408,74 +1497,36 @@ def _cmd_setup_hooks(project_dir: Path, output_format: str, force: bool = False)
 # --- Phase 2: AI-optimized summary + cross-tool integration ---
 
 def _render_state_summary_md(state: dict[str, Any], git_root: Optional[Path]) -> str:
-    """Render an AI-optimized snapshot of project state.
-
-    Designed for inclusion via AGENTS.md / Cursor rules. Stays under ~200 lines
-    by capping the recent-work and heatmap sections — the full journal lives in
-    state.md, this is the read-this-first index.
-    """
-    project = state.get("project", "Project")
-    status = state.get("status", "UNKNOWN")
-    session_n = state.get("session_number", 0)
-    branch = state.get("session_branch") or "?"
+    """Render the compact four-field cross-agent handoff schema."""
     last_updated = state.get("last_updated", "unknown")
-
     lines = [
-        f"# {project} — Project State",
-        f"_Auto-generated by `nexus journal export-summary` · {last_updated}_",
+        f"<!-- nexus journal v2 · updated {last_updated} -->",
         "",
-        f"**Status:** `{status}` · Session {session_n} · branch=`{branch}`",
-        "",
-        "## Active Now",
+        "# Intent",
     ]
-
-    next_items = state.get("next", [])
-    if next_items:
-        for n in next_items:
-            lines.append(f"- [ ] {n}")
-    else:
-        lines.append("_Nothing queued. Use `nexus journal next add \"<task>\"`._")
-    lines.append("")
-
-    lines.append("## Blockers")
-    blockers = state.get("blockers", [])
-    if blockers:
-        for b in blockers:
-            lines.append(f"- {b}")
-    else:
-        lines.append("_None._")
-    lines.append("")
-
+    intent = state.get("intent", "").strip()
+    lines.append(intent or "_Not set._")
+    lines += ["", "# Changes Made"]
     done_recent = state.get("done", [])[-MAX_SUMMARY_DONE:]
-    if done_recent:
-        lines.append(f"## Recent Work (last {len(done_recent)} entries)")
-        for label, items in _group_done_by_type(done_recent):
-            lines.append(f"### {label}")
-            for item in items:
-                # Strip the "[date Sn] " prefix for compactness
-                payload = item.split("] ", 1)[-1] if "] " in item else item
-                lines.append(f"- {payload}")
-            lines.append("")
-
-    if git_root:
-        churn = _git_file_churn(git_root, since_iso=None, max_commits=50)
-        top = sorted(churn.items(), key=lambda x: -x[1])[:5]
-        if top:
-            lines.append("## Most-Changed Files (last 50 commits)")
-            for f, c in top:
-                lines.append(f"- {c}× `{f}`")
-            lines.append("")
-
-        commits = _git_log_recent(git_root, n=5)
-        if commits:
-            lines.append("## Recent Commits")
-            for c in commits:
-                lines.append(f"- `{c['hash']}` {c['date']} — {c['message']}")
-            lines.append("")
-
-    lines.append("---")
-    lines.append("_Full journal: `.nexus/state.md` · Dashboard: `.nexus/state-dashboard.html`_")
-    return "\n".join(lines) + "\n"
+    lines.extend(
+        f"- {item.split('] ', 1)[-1] if '] ' in item else item}"
+        for item in done_recent
+    )
+    if not done_recent:
+        lines.append("_None recorded._")
+    lines += ["", "# Decisions Taken"]
+    notes = state.get("decision_notes", [])[-10:]
+    lines.extend(f"- {note}" for note in notes)
+    if not notes:
+        lines.append("_None recorded._")
+    lines += ["", "# Next Steps / Blockers"]
+    next_items = state.get("next", [])[:20]
+    blockers = state.get("blockers", [])[:20]
+    lines.extend(f"- [ ] {item}" for item in next_items)
+    lines.extend(f"- BLOCKED: {item}" for item in blockers)
+    if not next_items and not blockers:
+        lines.append("_None._")
+    return "\n".join(lines[:MAX_SUMMARY_LINES]).rstrip() + "\n"
 
 
 def _write_state_summary(project_dir: Path, state: dict[str, Any],
@@ -1489,7 +1540,7 @@ def _write_state_summary(project_dir: Path, state: dict[str, Any],
 
 
 def _cmd_export_summary(project_dir: Path, output_format: str) -> None:
-    """Generate .nexus/state-summary.md (AI-optimized snapshot, ≤~200 lines)."""
+    """Generate .nexus/state-summary.md (four-field snapshot, at most 80 lines)."""
     state = _load_state(project_dir)
     git_root = _resolve_git_root(project_dir)
     path, line_count = _write_state_summary(project_dir, state, git_root)
@@ -1502,58 +1553,16 @@ def _cmd_export_summary(project_dir: Path, output_format: str) -> None:
     ), OutputFormat(output_format))
 
 
-# --- AGENTS.md / Cursor rule generation ---
+# --- AGENTS.md state-pointer generation ---
 
 NEXUS_STATE_BLOCK = (
     NEXUS_AGENTS_BEGIN + "\n"
-    "## Project State (auto-managed by `nexus journal init-agents`)\n"
-    "\n"
-    "Current state, active tasks, and recent work for this project live in:\n"
-    "\n"
-    "- `.nexus/state-summary.md` — AI-optimized summary (≤200 lines, **read this first**)\n"
-    "- `.nexus/state.md` — full journal (commit log grouped by Conventional Commits type)\n"
-    "- `.nexus/state-dashboard.html` — visual dashboard\n"
-    "\n"
-    "Update via the journal CLI. Sessions auto-roll when stale (idle ≥4h, new\n"
-    "UTC date, or branch changed) — explicit `session-start`/`session-end` is\n"
-    "optional, and the post-commit hook keeps the journal current automatically.\n"
-    "\n"
-    "```bash\n"
-    "python nexus/cli/bs_cli.py journal next add \"<task>\"        # queue work\n"
-    "python nexus/cli/bs_cli.py journal next done \"<idx|substr>\" # mark complete\n"
-    "python nexus/cli/bs_cli.py journal blocker add \"<text>\"     # record a blocker\n"
-    "python nexus/cli/bs_cli.py journal log \"<note>\"             # append to journal\n"
-    "python nexus/cli/bs_cli.py journal status                   # show current state\n"
-    "```\n"
-    "\n"
-    "This block is regenerated by `nexus journal init-agents`. Edit content\n"
-    "outside the markers; anything between them will be replaced.\n"
+    "## Project State\n\n"
+    "Read `.nexus/state-summary.md` first when present; it contains the at-most-80-line\n"
+    "intent, changes, decisions, and next-steps/blockers handoff. Use\n"
+    "`nexus journal handoff` to emit the same schema.\n"
     + NEXUS_AGENTS_END + "\n"
 )
-
-CURSOR_RULE_CONTENT = """\
----
-description: Project state and active tasks (auto-generated by nexus journal)
-globs: ["**/*"]
-alwaysApply: false
----
-
-# Project State
-
-Read these at session start to understand current state and pending work:
-
-- `.nexus/state-summary.md` — AI-optimized summary (≤200 lines)
-- `.nexus/state.md` — full project journal
-
-Update via:
-
-- `nexus journal next add "<task>"` — queue work
-- `nexus journal blocker add "<text>"` — record blockers
-- `nexus journal log "<note>"` — append to the journal (auto-rolls stale sessions)
-
-Run `nexus journal status` to see the current state without reading files.
-"""
-
 
 def _upsert_agents_md(project_dir: Path) -> str:
     """Insert/replace the Nexus-managed block in AGENTS.md.
@@ -1587,30 +1596,13 @@ def _upsert_agents_md(project_dir: Path) -> str:
     return "inserted"
 
 
-def _write_cursor_rule(project_dir: Path) -> str:
-    """Write .cursor/rules/state.mdc. Returns 'created' | 'updated' | 'unchanged'."""
-    path = project_dir / CURSOR_RULE
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    if path.exists():
-        existing = path.read_text(encoding="utf-8")
-        if existing == CURSOR_RULE_CONTENT:
-            return "unchanged"
-        path.write_text(CURSOR_RULE_CONTENT, encoding="utf-8")
-        return "updated"
-
-    path.write_text(CURSOR_RULE_CONTENT, encoding="utf-8")
-    return "created"
-
-
 def _cmd_init_agents(project_dir: Path, output_format: str) -> None:
-    """Install/refresh AGENTS.md block + .cursor/rules/state.mdc + state-summary.md.
+    """Install/refresh the AGENTS.md state pointer and state-summary.md.
 
     Idempotent: safe to run repeatedly. Existing AGENTS.md content outside the
     Nexus markers is preserved.
     """
     agents_action = _upsert_agents_md(project_dir)
-    cursor_action = _write_cursor_rule(project_dir)
 
     state = _load_state(project_dir)
     git_root = _resolve_git_root(project_dir)
@@ -1618,7 +1610,6 @@ def _cmd_init_agents(project_dir: Path, output_format: str) -> None:
 
     msg = (
         f"AGENTS.md: {agents_action} | "
-        f".cursor/rules/state.mdc: {cursor_action} | "
         f"state-summary.md: {summary_lines} lines"
     )
 
@@ -1632,10 +1623,8 @@ def _cmd_init_agents(project_dir: Path, output_format: str) -> None:
         message=msg,
         details={
             "agents_md": agents_action,
-            "cursor_rule": cursor_action,
             "state_summary_lines": summary_lines,
             "agents_path": str(project_dir / AGENTS_MD),
-            "cursor_path": str(project_dir / CURSOR_RULE),
             "summary_path": str(summary_path),
         },
     ), OutputFormat(output_format)) if output_format != "human" else None
@@ -1702,12 +1691,30 @@ def _cmd_decision(project_dir: Path, args: tuple, output_format: str) -> None:
 
     journal decision add "<title>"   create a new ADR stub
     journal decision list            show existing ADRs
+    journal decision note "<text>"   record a compact session decision
     """
     action = args[0] if args else "list"
     rest = args[1:]
     decisions_dir = project_dir / DECISIONS_DIR
 
-    if action == "add":
+    if action == "note":
+        text = " ".join(rest).strip()
+        if not text:
+            emit(make_result("journal-decision-note", Status.FAIL,
+                             message='Usage: journal decision note "<text>"'),
+                 OutputFormat(output_format))
+            return
+        state = _load_state(project_dir)
+        notes = list(state.get("decision_notes", []))
+        notes.append(text)
+        state["decision_notes"] = notes[-50:]
+        _save_state(project_dir, state)
+        _maybe_auto_export(project_dir)
+        emit(make_result("journal-decision-note", Status.PASS,
+                         message="Decision note recorded.",
+                         details={"decision": text}), OutputFormat(output_format))
+
+    elif action == "add":
         title = " ".join(rest).strip()
         if not title:
             emit(make_result("journal-decision", Status.FAIL,
@@ -1780,7 +1787,7 @@ def _cmd_decision(project_dir: Path, args: tuple, output_format: str) -> None:
 
     else:
         emit(make_result("journal-decision", Status.FAIL,
-                         message=f"Unknown action: {action}. Use add|list."),
+                         message=f"Unknown action: {action}. Use add|list|note."),
              OutputFormat(output_format))
 
 
@@ -2171,6 +2178,10 @@ def run_journal(subcommand: str, args: tuple, output_format: str, project_dir: s
         _cmd_next(pd, args, output_format)
     elif subcommand == "blocker":
         _cmd_blocker(pd, args, output_format)
+    elif subcommand == "intent":
+        _cmd_intent(pd, args, output_format)
+    elif subcommand == "handoff":
+        _cmd_handoff(pd, output_format)
     elif subcommand == "export-summary":
         _cmd_export_summary(pd, output_format)
     elif subcommand == "init-agents":

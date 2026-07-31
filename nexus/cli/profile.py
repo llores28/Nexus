@@ -25,13 +25,17 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+from nexus import __version__
+
 PROFILE_REL = ".nexus/profile.json"
-NEXUS_VERSION = "0.2.0"
+NEXUS_VERSION = __version__
 
 Tier = Literal["fast", "team", "enterprise"]
 Severity = Literal["info", "warn", "must"]
-Target = Literal["agents_md", "claude", "cursor", "copilot"]
-ALL_TARGETS: tuple[Target, ...] = ("agents_md", "claude", "cursor", "copilot")
+Target = Literal["agents_md", "claude", "cursor", "copilot", "devin-review"]
+ALL_TARGETS: tuple[Target, ...] = (
+    "agents_md", "claude", "cursor", "copilot", "devin-review",
+)
 _TIER_ORDER = {"fast": 0, "team": 1, "enterprise": 2}
 
 

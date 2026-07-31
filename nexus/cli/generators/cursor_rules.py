@@ -57,7 +57,6 @@ def _rule_matches_globs(rule: Rule, fw_globs: tuple[str, ...]) -> bool:
 
 
 def _core_file(profile: Profile, h: str) -> str:
-    rules = select_rules(profile, target="cursor", only_global=True)
     out = [
         _frontmatter(
             description="Project conventions and constraints (managed by Nexus)",
@@ -66,28 +65,13 @@ def _core_file(profile: Profile, h: str) -> str:
         "",
         stamp(h, "cursor.00-core"),
         "",
-        f"# {profile.project_name}",
+        f"# Cursor adapter — {profile.project_name}",
         "",
-        f"**Tier:** {profile.tier}.",
+        "Read `AGENTS.md` as the canonical whole-repository instruction source.",
+        "Load `.agents/skills/*/SKILL.md` only when a matching workflow is needed.",
     ]
-    if profile.frameworks or profile.languages:
-        stack_bits: list[str] = []
-        if profile.frameworks:
-            stack_bits.append(", ".join(profile.frameworks))
-        if profile.languages:
-            stack_bits.append(", ".join(profile.languages))
-        out.append(f"**Stack:** {' / '.join(stack_bits)}.")
     out.append("")
-    out.append("## Conventions")
-    out.append("")
-    if rules:
-        for r in rules:
-            sev = "" if r.severity == "must" else f" _[{r.severity}]_"
-            out.append(f"- {r.text}{sev}")
-    else:
-        out.append("- (no whole-repo rules configured)")
-    out.append("")
-    out.append("Run `nexus doctor` to verify rules and stack are in sync.")
+    out.append("Scoped Cursor-only deltas, when present, live in sibling rule files.")
     out.append("")
     return "\n".join(out)
 
@@ -96,7 +80,10 @@ def _framework_file(profile: Profile, fw: str, h: str) -> str | None:
     fw_globs = _FRAMEWORK_GLOBS.get(fw)
     if not fw_globs:
         return None
-    scoped = select_rules(profile, target="cursor", only_scoped=True)
+    scoped = [
+        r for r in select_rules(profile, target="cursor", only_scoped=True)
+        if r.targets is not None
+    ]
     matched = [r for r in scoped if _rule_matches_globs(r, fw_globs)]
     if not matched:
         return None

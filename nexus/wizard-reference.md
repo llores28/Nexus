@@ -102,10 +102,10 @@ NOT external-customers, no oncall, low/medium governance, low complexity,
 
 ## File Mapping
 
-- Fast → `nexus/1Fast-ws-Bootstrap.md`
-- Team → `nexus/2Team-ws-Bootstrap.md`
-- Enterprise → `nexus/3Enterprise-ws-Bootstrap.md`
-- Fallback → `nexus/Uni-WindsurfBootstrap.md`
+- Fast → `nexus/1Fast-Bootstrap.md`
+- Team → `nexus/2Team-Bootstrap.md`
+- Enterprise → `nexus/3Enterprise-Bootstrap.md`
+- Fallback → `nexus/Universal-Bootstrap.md`
 
 ---
 

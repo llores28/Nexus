@@ -7,3 +7,23 @@ nexus/wizard-reference.md
 # Nexus journal — exclude machine-readable JSON and raw diffs (keep state.md + dashboard indexed)
 .nexus/state.json
 .nexus/*.json
+
+<!-- nexus:context-ignore:begin -->
+# Context-heavy generated/runtime artifacts
+.git/
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.cache/
+dist/
+build/
+coverage/
+htmlcov/
+*.log
+*.min.js
+*.map
+.nexus/journal/
+.nexus/state-dashboard.html
+<!-- nexus:context-ignore:end -->

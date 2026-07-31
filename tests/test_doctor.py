@@ -7,10 +7,10 @@ version mismatch, missing-file diagnosis, and the ``--deep`` stack diff.
 import json
 from pathlib import Path
 
-import click
 import pytest
 
 from nexus.cli.generators import run_all
+from nexus.cli.installation import ALL_CONSUMERS, install_skills, record_managed_files
 from nexus.cli.profile import (
     NEXUS_VERSION,
     Profile,
@@ -18,7 +18,7 @@ from nexus.cli.profile import (
     hash_profile,
     save,
 )
-from nexus.cli.tools.doctor import _check_file, _read_stamp_hash, run_doctor
+from nexus.cli.tools.doctor import _check_file, _read_stamp_hash, diagnose, run_doctor
 
 
 @pytest.fixture
@@ -37,7 +37,9 @@ def seeded_project(tmp_path):
         ),
     )
     save(tmp_path, profile)
-    run_all(profile, tmp_path)
+    generated = run_all(profile, tmp_path)
+    install_skills(tmp_path, consumers=ALL_CONSUMERS, tier=profile.tier)
+    record_managed_files(tmp_path, (item.path for item, _ in generated))
     return tmp_path, profile
 
 
@@ -89,6 +91,23 @@ class TestCheckFile:
 # --------------------------------------------------------------------------
 
 class TestRunDoctor:
+    def test_vscode_host_checks_canonical_surfaces_without_new_adapter(self, seeded_project):
+        pd, _ = seeded_project
+        result = diagnose(pd, deep=False, consumer="vscode")
+        assert not any(item["check"].startswith("adapter:claude") for item in result["items"])
+        assert next(item for item in result["items"] if item["check"] == "canonical-skills")["status"] == "ok"
+
+    def test_devin_review_audits_combined_instruction_duplicates(self, seeded_project):
+        pd, _ = seeded_project
+        duplicate = "Flag any authorization change that lacks a focused regression test."
+        claude = pd / "CLAUDE.md"
+        cursor = pd / ".cursor" / "rules" / "00-core.mdc"
+        claude.write_text(claude.read_text(encoding="utf-8") + duplicate + "\n", encoding="utf-8")
+        cursor.write_text(cursor.read_text(encoding="utf-8") + duplicate + "\n", encoding="utf-8")
+        result = diagnose(pd, deep=False, consumer="devin-review")
+        check = next(item for item in result["items"] if item["check"] == "devin-review-duplication")
+        assert check["status"] == "fail"
+
     def test_clean_project_no_drift(self, seeded_project, capsys):
         pd, _ = seeded_project
         # Should not raise
@@ -99,9 +118,10 @@ class TestRunDoctor:
         # in a bare fixture project — that's a separate signal)
         assert data["details"]["drift_count"] == 0
         assert data["details"]["missing_count"] == 0
-        hash_items = [it for it in data["items"] if it["check"].startswith("hash:")]
-        assert hash_items
-        assert all(it["status"] == "ok" for it in hash_items)
+        adapter_items = [it for it in data["items"] if it["check"].startswith("adapter:")]
+        assert adapter_items
+        assert all(it["status"] == "ok" for it in adapter_items)
+        assert next(it for it in data["items"] if it["check"] == "canonical-skills")["status"] == "ok"
 
     def test_hand_edit_inside_managed_block_flags_drift(self, seeded_project, capsys):
         pd, _ = seeded_project
@@ -116,7 +136,7 @@ class TestRunDoctor:
         )
         run_doctor(output_format="json", project_dir=str(pd), deep=False)
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "warn"
+        assert data["status"] == "fail"
         assert data["details"]["drift_count"] >= 1
 
     def test_missing_generated_file_flags_warn(self, seeded_project, capsys):
@@ -124,12 +144,15 @@ class TestRunDoctor:
         (pd / "CLAUDE.md").unlink()
         run_doctor(output_format="json", project_dir=str(pd), deep=False)
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "warn"
+        assert data["status"] == "fail"
         assert data["details"]["missing_count"] >= 1
 
-    def test_no_profile_aborts(self, tmp_path, capsys):
-        with pytest.raises(click.Abort):
-            run_doctor(output_format="json", project_dir=str(tmp_path), deep=False)
+    def test_no_profile_reports_failure(self, tmp_path, capsys):
+        result = run_doctor(output_format="json", project_dir=str(tmp_path), deep=False)
+        data = json.loads(capsys.readouterr().out)
+        assert result["status"] == "fail"
+        assert data["status"] == "fail"
+        assert any(item["check"] == "profile-present" for item in data["items"])
 
     def test_version_mismatch_warns(self, tmp_path, capsys):
         # Save a profile with an old version
@@ -141,7 +164,9 @@ class TestRunDoctor:
         )
         save(tmp_path, profile)
         # Generate files with the actual current version (mismatched stamp)
-        run_all(profile, tmp_path)
+        generated = run_all(profile, tmp_path)
+        install_skills(tmp_path, consumers=ALL_CONSUMERS, tier=profile.tier)
+        record_managed_files(tmp_path, (item.path for item, _ in generated))
         run_doctor(output_format="json", project_dir=str(tmp_path), deep=False)
         data = json.loads(capsys.readouterr().out)
         assert data["status"] == "warn"

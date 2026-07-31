@@ -9,7 +9,10 @@ Auto-detects project type and runs:
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import time
+import venv
 from pathlib import Path
 from typing import Any, Optional
 
@@ -61,27 +64,29 @@ def _detect_project(project_dir: Path) -> dict[str, Any]:
 
         py_cmds = {}
         if pyproject.exists():
-            py_cmds["install"] = "pip install -e ."
+            py_cmds["install"] = "python -m pip check"
             # Check for common tools in pyproject
             try:
                 content = pyproject.read_text(encoding="utf-8")
                 if "pytest" in content:
-                    py_cmds["test"] = "pytest"
-                if "ruff" in content:
-                    py_cmds["lint"] = "ruff check ."
-                elif "flake8" in content:
-                    py_cmds["lint"] = "flake8 ."
-                if "mypy" in content:
-                    py_cmds["typecheck"] = "mypy ."
+                    py_cmds["test"] = "python -m pytest"
+                if "[tool.ruff" in content and _module_available("ruff"):
+                    py_cmds["lint"] = "python -m ruff check ."
+                elif "[flake8]" in content and _module_available("flake8"):
+                    py_cmds["lint"] = "python -m flake8 ."
+                if "[tool.mypy]" in content and _module_available("mypy"):
+                    py_cmds["typecheck"] = "python -m mypy ."
             except OSError:
                 pass
         elif requirements.exists():
-            py_cmds["install"] = "pip install -r requirements.txt"
+            py_cmds["install"] = "python -m pip check"
 
         # Merge with any existing commands
         for k, v in py_cmds.items():
             if not info["commands"].get(k):
                 info["commands"][k] = v
+        if info.get("package_manager") is None:
+            info["package_manager"] = "pip"
 
     # Go
     go_mod = project_dir / "go.mod"
@@ -132,6 +137,12 @@ def _cmd_exists(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
+def _module_available(name: str) -> bool:
+    """Return whether a Python tool can run through the active interpreter."""
+    import importlib.util
+    return importlib.util.find_spec(name) is not None
+
+
 # --- Step runners ---
 
 def _run_step(
@@ -148,69 +159,119 @@ def _run_step(
             "message": "No command configured for this step",
             "duration_ms": 0,
         }
+    start = time.time()
+    try:
+        import shlex
+
+        args = shlex.split(cmd_str)
+        if args and args[0].lower() in {"python", "python3"}:
+            args[0] = sys.executable
+        result = subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout, cwd=str(cwd),
+            env={**os.environ, "CI": "true", "NODE_ENV": "test"},
+        )
+        payload: dict[str, Any] = {
+            "step": name,
+            "status": "pass" if result.returncode == 0 else "fail",
+            "command": cmd_str,
+            "duration_ms": int((time.time() - start) * 1000),
+            "stdout": truncate_output(result.stdout) if result.stdout else "",
+        }
+        if result.returncode != 0:
+            payload["exit_code"] = result.returncode
+            payload["stderr"] = truncate_output(result.stderr) if result.stderr else ""
+        return payload
+    except subprocess.TimeoutExpired:
+        return {
+            "step": name, "status": "fail", "command": cmd_str,
+            "duration_ms": int((time.time() - start) * 1000),
+            "message": f"Timed out after {timeout}s",
+        }
+    except (FileNotFoundError, OSError) as exc:
+        return {
+            "step": name, "status": "fail", "command": cmd_str,
+            "duration_ms": int((time.time() - start) * 1000),
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _isolated_install(project_dir: Path) -> dict[str, Any]:
+    """Build and import the project wheel without mutating the active Python."""
+    if not (project_dir / "pyproject.toml").is_file():
+        return {
+            "step": "isolated-install",
+            "status": "skip",
+            "message": "No pyproject.toml; wheel verification is not applicable",
+            "duration_ms": 0,
+        }
 
     start = time.time()
     try:
-        # Split command string into args safely
-        import shlex
-        args = shlex.split(cmd_str)
-
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(cwd),
-            env={**os.environ, "CI": "true", "NODE_ENV": "test"},
-        )
-
-        duration_ms = int((time.time() - start) * 1000)
-
-        if result.returncode == 0:
+        with tempfile.TemporaryDirectory(prefix="nexus-smoketest-") as raw:
+            root = Path(raw)
+            wheels = root / "wheels"
+            wheels.mkdir()
+            build = subprocess.run(
+                [sys.executable, "-m", "pip", "wheel", str(project_dir), "--no-deps", "--wheel-dir", str(wheels)],
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if build.returncode != 0:
+                return {
+                    "step": "isolated-install",
+                    "status": "fail",
+                    "exit_code": build.returncode,
+                    "duration_ms": int((time.time() - start) * 1000),
+                    "stderr": truncate_output(build.stderr),
+                }
+            wheel_files = sorted(wheels.glob("*.whl"))
+            if not wheel_files:
+                return {
+                    "step": "isolated-install",
+                    "status": "fail",
+                    "duration_ms": int((time.time() - start) * 1000),
+                    "message": "Wheel build succeeded but produced no wheel",
+                }
+            env_dir = root / "venv"
+            venv.EnvBuilder(with_pip=True).create(env_dir)
+            env_python = env_dir / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+            install = subprocess.run(
+                [str(env_python), "-m", "pip", "install", str(wheel_files[0])],
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if install.returncode != 0:
+                return {
+                    "step": "isolated-install",
+                    "status": "fail",
+                    "exit_code": install.returncode,
+                    "duration_ms": int((time.time() - start) * 1000),
+                    "stderr": truncate_output(install.stderr),
+                }
+            verify = subprocess.run(
+                [str(env_python), "-m", "nexus.cli.bs_cli", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
             return {
-                "step": name,
-                "status": "pass",
-                "command": cmd_str,
-                "duration_ms": duration_ms,
-                "stdout": truncate_output(result.stdout) if result.stdout else "",
+                "step": "isolated-install",
+                "status": "pass" if verify.returncode == 0 else "fail",
+                "exit_code": verify.returncode,
+                "duration_ms": int((time.time() - start) * 1000),
+                "wheel": wheel_files[0].name,
+                "stdout": truncate_output(verify.stdout),
+                "stderr": truncate_output(verify.stderr),
             }
-        else:
-            return {
-                "step": name,
-                "status": "fail",
-                "command": cmd_str,
-                "exit_code": result.returncode,
-                "duration_ms": duration_ms,
-                "stdout": truncate_output(result.stdout) if result.stdout else "",
-                "stderr": truncate_output(result.stderr) if result.stderr else "",
-            }
-
-    except subprocess.TimeoutExpired:
-        duration_ms = int((time.time() - start) * 1000)
+    except (OSError, subprocess.TimeoutExpired) as exc:
         return {
-            "step": name,
+            "step": "isolated-install",
             "status": "fail",
-            "command": cmd_str,
-            "duration_ms": duration_ms,
-            "message": f"Timed out after {timeout}s",
-        }
-    except FileNotFoundError as e:
-        return {
-            "step": name,
-            "status": "fail",
-            "command": cmd_str,
             "duration_ms": int((time.time() - start) * 1000),
-            "message": f"Command not found: {e}",
+            "message": f"{type(exc).__name__}: {exc}",
         }
-    except Exception as e:
-        return {
-            "step": name,
-            "status": "fail",
-            "command": cmd_str,
-            "duration_ms": int((time.time() - start) * 1000),
-            "message": str(e),
-        }
-
 
 # --- Server health check ---
 
@@ -298,7 +359,8 @@ def run_smoketest(
     output_format: str = "json",
     level: str = "quick",
     project_dir: str = ".",
-) -> None:
+    isolated_install: bool = False,
+) -> dict[str, Any]:
     """Run smoketest pipeline."""
     fmt = OutputFormat(output_format)
     proj_path = Path(project_dir).resolve()
@@ -309,6 +371,9 @@ def run_smoketest(
 
     steps: list[dict[str, Any]] = []
     total_start = time.time()
+
+    if isolated_install:
+        steps.append(_isolated_install(proj_path))
 
     # Step 1: Dependency install verify
     steps.append(_run_step("deps-verify", cmds.get("install"), proj_path, timeout=180))
@@ -365,3 +430,4 @@ def run_smoketest(
     result["steps"] = steps
 
     emit(result, fmt)
+    return result

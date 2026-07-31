@@ -1,7 +1,7 @@
 """
 Prerequisites Detection & Setup Assistant.
 
-Detects installed tools (Docker, Docker Desktop extensions, Windsurf Docker Extension,
+Detects installed tools (Docker, Docker Desktop extensions, IDE Docker Extension,
 Python, Git, Node) and provides guided setup instructions for missing components.
 """
 
@@ -130,19 +130,20 @@ def check_docker_extensions() -> dict[str, Any]:
 
 
 def check_docker_extension() -> dict[str, Any]:
-    """
-    Check if the Docker Extension is installed in Windsurf.
-    Windsurf uses Open VSX extensions; the Docker extension ID is 'ms-azuretools.vscode-docker'.
-    We check the extensions directory for its presence.
-    """
+    """Check common VS Code-compatible extension directories for Docker support."""
     ext_dirs: list[Path] = []
     if platform.system() == "Windows":
         userprofile = os.environ.get("USERPROFILE", "")
         if userprofile:
+            ext_dirs.append(Path(userprofile) / ".vscode" / "extensions")
+            ext_dirs.append(Path(userprofile) / ".cursor" / "extensions")
+            # Legacy Windsurf locations remain read-only compatibility inputs.
             ext_dirs.append(Path(userprofile) / ".windsurf" / "extensions")
             ext_dirs.append(Path(userprofile) / ".codeium" / "windsurf" / "extensions")
     else:
         home = Path.home()
+        ext_dirs.append(home / ".vscode" / "extensions")
+        ext_dirs.append(home / ".cursor" / "extensions")
         ext_dirs.append(home / ".windsurf" / "extensions")
         ext_dirs.append(home / ".codeium" / "windsurf" / "extensions")
 
@@ -155,7 +156,7 @@ def check_docker_extension() -> dict[str, Any]:
                         "name": "docker-extension", "installed": True, "status": "ok",
                         "extensions_dir": str(ext_dir),
                         "extension_path": str(child),
-                        "message": "Docker Extension found in Windsurf",
+                        "message": "Docker Extension found in a VS Code-compatible IDE",
                     }
             return {
                 "name": "docker-extension", "installed": False, "status": "missing",
@@ -165,7 +166,7 @@ def check_docker_extension() -> dict[str, Any]:
 
     return {
         "name": "docker-extension", "installed": False, "status": "missing",
-        "message": "Windsurf extensions directory not found",
+        "message": "No supported IDE extensions directory found",
     }
 
 
@@ -219,14 +220,14 @@ _GUIDES: dict[str, dict[str, Any]] = {
         ],
     },
     "docker-extension": {
-        "name": "Docker Extension for Windsurf",
+        "name": "Docker Extension for a VS Code-compatible IDE",
         "auto_install": False,
         "steps": [
-            "1. Open Windsurf",
+            "1. Open Devin, VS Code, or Cursor",
             "2. Go to Extensions panel (Ctrl+Shift+X / Cmd+Shift+X)",
             "3. Search for 'Docker'",
             "4. Install the Docker extension (ms-azuretools.vscode-docker or equivalent)",
-            "5. Reload Windsurf if prompted",
+            "5. Reload the IDE if prompted",
             "6. Verify: Docker icon appears in the sidebar",
         ],
     },

@@ -281,7 +281,7 @@ def _up(project_dir: Path) -> dict[str, Any]:
     if healthy:
         result["browser_preview"] = {
             "url": f"http://localhost:{port}",
-            "message": "Use Cascade browser_preview tool for visual verification",
+            "message": "Use the active IDE browser tooling for visual verification",
         }
     return result
 

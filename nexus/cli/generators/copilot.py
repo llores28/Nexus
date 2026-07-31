@@ -37,35 +37,15 @@ def _rule_matches_lang(rule: Rule, lang_globs: tuple[str, ...]) -> bool:
 
 
 def _repo_wide(profile: Profile, h: str) -> str:
-    rules = select_rules(profile, target="copilot", only_global=True)
     out = [
         stamp(h, "copilot.repo"),
         "",
-        f"# Copilot instructions -- {profile.project_name}",
+        f"# Copilot adapter — {profile.project_name}",
         "",
+        "Read `AGENTS.md` as the canonical project instruction source.",
+        "Load `.agents/skills/*/SKILL.md` only when the task matches a skill.",
+        "Copilot-specific scoped deltas live in `.github/instructions/`.",
     ]
-    stack_bits: list[str] = []
-    if profile.frameworks:
-        stack_bits.append(", ".join(profile.frameworks))
-    if profile.languages:
-        stack_bits.append(", ".join(profile.languages))
-    if stack_bits:
-        out.append(f"Stack: {' / '.join(stack_bits)}.")
-        out.append(f"Tier: {profile.tier}.")
-        out.append("")
-
-    out.append("## Conventions")
-    out.append("")
-    if rules:
-        for r in rules:
-            sev = "" if r.severity == "must" else f" ({r.severity})"
-            out.append(f"- {r.text}{sev}")
-    else:
-        out.append("- (no whole-repo rules configured)")
-    out.append("")
-    out.append(
-        "See `.github/instructions/*.instructions.md` for per-language conventions."
-    )
     out.append("")
     return "\n".join(out)
 
@@ -74,7 +54,10 @@ def _per_lang(profile: Profile, lang: str, h: str) -> str | None:
     globs = _LANG_GLOBS.get(lang)
     if not globs:
         return None
-    scoped = select_rules(profile, target="copilot", only_scoped=True)
+    scoped = [
+        r for r in select_rules(profile, target="copilot", only_scoped=True)
+        if r.targets is not None
+    ]
     matched = [r for r in scoped if _rule_matches_lang(r, globs)]
     if not matched:
         return None

@@ -9,6 +9,7 @@ needs in the real world.
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from nexus.cli.tools.journal import (
     HEALTH_STALE_DAYS,
@@ -21,17 +22,62 @@ from nexus.cli.tools.journal import (
     _classify_done_item,
     _diagnose_journal,
     _group_done_by_type,
+    _git_run,
+    _handoff_payload,
     _hook_status,
     _load_state,
     _next_decision_number,
     _parse_conventional_commit,
     _save_state,
+    _render_state_summary_md,
     _should_roll_session,
     _slugify,
     _upsert_agents_md,
-    _write_cursor_rule,
     run_journal,
 )
+
+
+def test_git_output_is_decoded_as_utf8(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="modernize dashboard — theme", stderr="")
+
+    monkeypatch.setattr("nexus.cli.tools.journal.subprocess.run", fake_run)
+    code, stdout, _ = _git_run(["log", "-1"], tmp_path)
+    assert code == 0
+    assert "—" in stdout
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
+
+
+def test_v2_handoff_has_exact_compaction_fields(tmp_path):
+    state = _load_state(tmp_path)
+    state["intent"] = "Ship compact context"
+    state["done"] = ["added context audit"]
+    state["decision_notes"] = ["AGENTS.md is canonical"]
+    state["next"] = ["run tests"]
+    state["blockers"] = ["none external"]
+    payload = _handoff_payload(state)
+    assert list(payload) == [
+        "intent", "changes_made", "decisions_taken", "next_steps_and_blockers"
+    ]
+
+
+def test_state_summary_has_four_headings_and_at_most_80_lines(tmp_path):
+    state = _load_state(tmp_path)
+    state["intent"] = "Keep context small"
+    state["done"] = [f"change {i}" for i in range(100)]
+    state["decision_notes"] = [f"decision {i}" for i in range(100)]
+    state["next"] = [f"next {i}" for i in range(100)]
+    state["blockers"] = [f"blocker {i}" for i in range(100)]
+    rendered = _render_state_summary_md(state, None)
+    headings = [line for line in rendered.splitlines() if line.startswith("# ")]
+    assert headings == [
+        "# Intent", "# Changes Made", "# Decisions Taken", "# Next Steps / Blockers"
+    ]
+    assert len(rendered.splitlines()) <= 80
 
 
 # --------------------------------------------------------------------------
@@ -374,21 +420,6 @@ class TestAgentsUpsert:
         _upsert_agents_md(tmp_path)
         action2 = _upsert_agents_md(tmp_path)
         assert action2 == "unchanged"
-
-
-# --------------------------------------------------------------------------
-# Cursor rule
-# --------------------------------------------------------------------------
-
-class TestCursorRule:
-    def test_creates(self, tmp_path):
-        action = _write_cursor_rule(tmp_path)
-        assert action == "created"
-        assert (tmp_path / ".cursor" / "rules" / "state.mdc").exists()
-
-    def test_idempotent(self, tmp_path):
-        _write_cursor_rule(tmp_path)
-        assert _write_cursor_rule(tmp_path) == "unchanged"
 
 
 # --------------------------------------------------------------------------

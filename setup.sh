@@ -2,16 +2,14 @@
 # Nexus one-command setup / upgrade.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
-#   # or, from a local clone:
-#   ./setup.sh                  # fresh init OR safe upgrade (auto-detected)
+#   ./setup.sh --project-dir /path/to/project
+#   ./setup.sh --project-dir /path/to/project --source /path/to/nexus.whl
 #   ./setup.sh --upgrade-only   # just refresh the Nexus package; skip nexus init
 #   ./setup.sh --refresh        # on upgrade, also regenerate BOOTSTRAP.md
 #
 # Behavior:
-#   - Brand-new project (no .nexus/state.json): creates .venv, installs Nexus,
-#     runs `nexus init` (interactive 7-question wizard).
-#   - Already-bootstrapped project (.nexus/state.json present): creates/reuses
+#   - Brand-new project: creates .venv, installs Nexus, and runs `nexus init`.
+#   - Already-bootstrapped project (profile, manifest, or legacy state): creates/reuses
 #     .venv, upgrades the Nexus package, runs `nexus init --upgrade` to re-validate
 #     git hooks and run the health check. Does NOT re-prompt the wizard.
 #     Does NOT overwrite BOOTSTRAP.md unless --refresh is also passed.
@@ -39,22 +37,34 @@ else
     printf "    On Windows, 'bash' resolves to the WSL relay (C:\\Windows\\System32\\bash.exe),\n"
     printf "    which requires an installed WSL distro to work.\n\n"
     printf "    \033[1;32mFix — choose one:\033[0m\n"
-    printf "    1) PowerShell (recommended):\n"
-    printf "       irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 | iex\n\n"
+    printf "    1) PowerShell (recommended): download setup.ps1, inspect it, then run it with -ProjectDir.\n\n"
     printf "    2) Git Bash (open 'Git Bash' from Start menu, then run):\n"
-    printf "       curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash\n\n"
+    printf "       curl -fsSLo setup-nexus.sh https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.sh\n"
+    printf "       bash setup-nexus.sh --project-dir .\n\n"
     printf "    3) Install WSL: wsl --install  (then reboot and re-run)\n\n"
     exit 1
   fi
 fi
 
-NEXUS_REPO="https://github.com/llores28/Nexus.git"
-PROJECT_DIR="$(pwd)"
+NEXUS_SPEC="git+https://github.com/llores28/Nexus.git@v0.3.0"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PROJECT_DIR=""
 
 UPGRADE_ONLY=0
 REFRESH=0
-for arg in "$@"; do
-  case "$arg" in
+DRY_RUN=0
+YES=0
+TEMPLATE=""
+CONSUMERS="all"
+SOURCE=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project-dir) PROJECT_DIR="$2"; shift ;;
+    --template) TEMPLATE="$2"; shift ;;
+    --consumers) CONSUMERS="$2"; shift ;;
+    --source) SOURCE="$2"; NEXUS_SPEC="$2"; shift ;;
+    --dry-run) DRY_RUN=1 ;;
+    --yes|--accept-defaults) YES=1 ;;
     --upgrade-only) UPGRADE_ONLY=1 ;;
     --refresh)      REFRESH=1 ;;
     -h|--help)
@@ -62,15 +72,29 @@ for arg in "$@"; do
       exit 0
       ;;
     *)
-      echo "Unknown flag: $arg" >&2
+      echo "Unknown flag: $1" >&2
       exit 2
       ;;
   esac
+  shift
 done
 
 info() { printf "\n\033[1;34m==> %s\033[0m\n" "$*"; }
 warn() { printf "\n\033[1;33m!!  %s\033[0m\n" "$*"; }
 err()  { printf "\n\033[1;31mXX  %s\033[0m\n" "$*" >&2; }
+
+if [ -z "$PROJECT_DIR" ]; then
+  PROJECT_DIR="$(pwd)"
+  if [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml"; then
+    err "Running from the Nexus clone requires --project-dir <your-project>."
+    exit 2
+  fi
+fi
+if [ ! -d "$PROJECT_DIR" ]; then
+  err "Project directory does not exist: $PROJECT_DIR"
+  exit 2
+fi
+PROJECT_DIR="$(CDPATH= cd -- "$PROJECT_DIR" && pwd)"
 
 # --- 1. Check Python ---
 info "Checking Python 3.10+"
@@ -90,16 +114,19 @@ if [ -z "$PY" ]; then
 fi
 echo "   using: $PY ($($PY --version))"
 
-# --- 1b. Check git (required for pip install git+...) ---
-if ! command -v git >/dev/null 2>&1; then
+# --- 1b. Check git when the selected package source requires it ---
+if [ "${NEXUS_SPEC#git+}" != "$NEXUS_SPEC" ] && ! command -v git >/dev/null 2>&1; then
   err "git not found. Install git from https://git-scm.com/ and re-run."
   exit 1
 fi
-echo "   git: $(git --version)"
+if command -v git >/dev/null 2>&1; then echo "   git: $(git --version)"; fi
 
 # --- 2. Detect mode: local-clone vs target-project ---
 MODE="target"
-if [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml" 2>/dev/null; then
+if [ -n "$SOURCE" ]; then
+  MODE="custom"
+  NEXUS_SPEC="$SOURCE"
+elif [ -f "$SCRIPT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$SCRIPT_DIR/pyproject.toml" 2>/dev/null; then
   MODE="clone"
 fi
 info "Mode: $MODE"
@@ -128,16 +155,16 @@ fi
 
 # --- 4. Detect prior Nexus install (informational) ---
 PRIOR_VERSION=""
-if python -m pip show nexus-bootstrap >/dev/null 2>&1; then
-  PRIOR_VERSION="$(python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
+if PYTHONPATH= python -m pip show nexus-bootstrap >/dev/null 2>&1; then
+  PRIOR_VERSION="$(PYTHONPATH= python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
   info "Existing Nexus install detected: nexus-bootstrap ${PRIOR_VERSION}"
 else
   info "No existing Nexus install detected (first install in this venv)"
 fi
 
 # --- 5. Install / upgrade Nexus ---
-info "Upgrading pip"
-python -m pip install --quiet --upgrade pip
+info "Using project-local pip"
+PYTHONPATH= python -m pip --version
 
 if [ "$MODE" = "clone" ]; then
   if [ -n "$PRIOR_VERSION" ]; then
@@ -145,17 +172,17 @@ if [ "$MODE" = "clone" ]; then
   else
     info "Installing Nexus (editable) from local clone"
   fi
-  python -m pip install --quiet -e .
+  PYTHONPATH= python -m pip install --quiet -e "$SCRIPT_DIR"
 else
   if [ -n "$PRIOR_VERSION" ]; then
-    info "Upgrading Nexus from $NEXUS_REPO"
+    info "Upgrading Nexus from $NEXUS_SPEC"
   else
-    info "Installing Nexus from $NEXUS_REPO"
+    info "Installing Nexus from $NEXUS_SPEC"
   fi
-  python -m pip install --quiet --upgrade "git+${NEXUS_REPO}"
+  PYTHONPATH= python -m pip install --quiet --upgrade --force-reinstall "$NEXUS_SPEC"
 fi
 
-NEW_VERSION="$(python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
+NEW_VERSION="$(PYTHONPATH= python -m pip show nexus-bootstrap 2>/dev/null | awk '/^Version:/ {print $2}')"
 if [ -n "$PRIOR_VERSION" ] && [ "$PRIOR_VERSION" != "$NEW_VERSION" ]; then
   echo "   nexus-bootstrap: $PRIOR_VERSION -> $NEW_VERSION"
 else
@@ -175,18 +202,27 @@ if [ "$UPGRADE_ONLY" -eq 1 ]; then
 fi
 
 # --- 7. Run nexus init (auto-detect upgrade vs fresh) ---
-INIT_FLAGS=()
-if [ -f "$PROJECT_DIR/.nexus/state.json" ]; then
+INIT_FLAGS=(--consumers "$CONSUMERS")
+if [ -f "$PROJECT_DIR/.nexus/profile.json" ] || [ -f "$PROJECT_DIR/.nexus/install-manifest.json" ] || [ -f "$PROJECT_DIR/.nexus/state.json" ]; then
   INIT_FLAGS+=(--upgrade)
   if [ "$REFRESH" -eq 1 ]; then
     INIT_FLAGS+=(--refresh)
   fi
-  info "Already-bootstrapped project detected (.nexus/state.json present) -- running upgrade"
+  info "Existing Nexus project detected (profile, manifest, or legacy state) -- running upgrade"
 elif [ "$REFRESH" -eq 1 ]; then
   warn "--refresh has no effect on a fresh init (BOOTSTRAP.md doesn't exist yet). Ignoring."
 fi
 
-nexus init --project-dir "$PROJECT_DIR" "${INIT_FLAGS[@]}"
+if [ -n "$TEMPLATE" ]; then INIT_FLAGS+=(--template "$TEMPLATE"); fi
+if [ "$DRY_RUN" -eq 1 ]; then INIT_FLAGS+=(--dry-run); fi
+if [ "$YES" -eq 1 ]; then INIT_FLAGS+=(--yes); fi
+
+if [ -x "$VENV/Scripts/nexus.exe" ]; then
+  NEXUS_BIN="$VENV/Scripts/nexus.exe"
+else
+  NEXUS_BIN="$VENV/bin/nexus"
+fi
+PYTHONPATH= "$NEXUS_BIN" init --project-dir "$PROJECT_DIR" "${INIT_FLAGS[@]}"
 
 # --- 8. Done ---
 info "Setup complete."

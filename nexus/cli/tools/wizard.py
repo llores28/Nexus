@@ -3,8 +3,8 @@ Bootstrap Wizard -- interactive tier selection (Fast / Team / Enterprise).
 
 Lightweight Python port of nexus/wizard-reference.md. Asks 7 high-signal
 questions and applies the same deterministic selection algorithm. The full
-Cascade workflow (.windsurf/workflows/bootstrap-wizard.md) covers branch
-follow-ups for Windsurf users; this module is the CLI equivalent.
+Agent Skill (.agents/skills/bootstrap-wizard.md) covers branch
+follow-ups for IDE users; this module is the CLI equivalent.
 """
 
 from pathlib import Path
@@ -16,9 +16,9 @@ from nexus.cli.utils import OutputFormat, Status, emit, make_result
 
 
 TEMPLATES = {
-    "fast": "1Fast-ws-Bootstrap.md",
-    "team": "2Team-ws-Bootstrap.md",
-    "enterprise": "3Enterprise-ws-Bootstrap.md",
+    "fast": "1Fast-Bootstrap.md",
+    "team": "2Team-Bootstrap.md",
+    "enterprise": "3Enterprise-Bootstrap.md",
 }
 
 

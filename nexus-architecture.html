@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus + Cascade — Honest Architecture</title>
+    <title>Nexus + Coding Agent — Honest Architecture</title>
     <style>
         * {
             margin: 0;
@@ -330,7 +330,7 @@
         .flow-box.developer {
             border-color: #22c55e;
         }
-        .flow-box.cascade {
+        .flow-box.agent {
             border-color: #8b5cf6;
         }
         .flow-box.nexus {
@@ -475,7 +475,7 @@
             margin-bottom: 15px;
         }
         
-        .mockup-cascade {
+        .mockup-agent {
             color: #a78bfa;
             margin-bottom: 15px;
         }
@@ -755,8 +755,8 @@
             text-decoration: underline;
         }
         
-        /* Windsurf Note */
-        .windsurf-note {
+        /* Devin Note */
+        .legacy-note {
             background: rgba(59, 130, 246, 0.1);
             border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: 12px;
@@ -765,7 +765,7 @@
             text-align: center;
         }
         
-        .windsurf-note p {
+        .legacy-note p {
             color: #60a5fa;
             font-size: 0.9rem;
         }
@@ -773,7 +773,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Nexus + Cascade Architecture</h1>
+        <h1>Nexus + Coding Agent Architecture</h1>
         <p class="subtitle">An honest view of what works, what's guidance-only — now with cross-session project tracking</p>
         
         <!-- Simple Flow -->
@@ -786,9 +786,9 @@
                     <div class="flow-box-desc">Types request</div>
                 </div>
                 <div class="flow-arrow">→</div>
-                <div class="flow-box cascade">
+                <div class="flow-box agent">
                     <div class="flow-box-icon">🤖</div>
-                    <div class="flow-box-title">Cascade</div>
+                    <div class="flow-box-title">Coding Agent</div>
                     <div class="flow-box-desc">Reads rules & context</div>
                 </div>
                 <div class="flow-arrow">→</div>
@@ -825,18 +825,18 @@
                             <span class="feature-title">CLI Toolkit</span>
                             <span class="badge badge-works">Works</span>
                         </div>
-                        <div class="feature-desc">10 commands that run and produce visible output</div>
-                        <div class="feature-example">python nexus/cli/bs_cli.py health check</div>
+                        <div class="feature-desc">Provider-neutral commands with structured output and truthful exit status</div>
+                        <div class="feature-example">nexus doctor --consumer all --deep</div>
                     </div>
                     
                     <div class="feature-card">
                         <div class="feature-header">
                             <span class="feature-icon">🔄</span>
-                            <span class="feature-title">Workflows</span>
+                            <span class="feature-title">Agent Skills</span>
                             <span class="badge badge-works">Works</span>
                         </div>
-                        <div class="feature-desc">Invoke with /command, Cascade follows steps</div>
-                        <div class="feature-example">/smoketest → runs test sequence</div>
+                        <div class="feature-desc">Loaded just in time from canonical .agents/skills</div>
+                        <div class="feature-example">smoketest/SKILL.md → risk-proportionate verification</div>
                     </div>
                     
                     <div class="feature-card">
@@ -845,8 +845,8 @@
                             <span class="feature-title">AGENTS.md Context</span>
                             <span class="badge badge-works">Works</span>
                         </div>
-                        <div class="feature-desc">Cascade reads project info, stack, constraints</div>
-                        <div class="feature-example">Cascade knows: Python 3.10+, Click, Rich</div>
+                        <div class="feature-desc">Coding Agent reads project info, stack, constraints</div>
+                        <div class="feature-example">Coding Agent knows: Python 3.10+, Click, Rich</div>
                     </div>
                     
                     <div class="feature-card">
@@ -887,7 +887,7 @@
                     <div class="column-icon">📋</div>
                     <div>
                         <div class="column-title">What's Guidance Only</div>
-                        <div class="column-subtitle">Rules Cascade may or may not follow</div>
+                        <div class="column-subtitle">Rules Coding Agent may or may not follow</div>
                     </div>
                 </div>
                 
@@ -898,7 +898,7 @@
                             <span class="feature-title">Token Efficiency</span>
                             <span class="badge badge-guidance">Guidance</span>
                         </div>
-                        <div class="feature-desc">Rule tells Cascade "be concise" but no way to measure if it's working</div>
+                        <div class="feature-desc">Rule tells Coding Agent "be concise" but no way to measure if it's working</div>
                     </div>
                     
                     <div class="feature-card">
@@ -907,7 +907,7 @@
                             <span class="feature-title">Rules System</span>
                             <span class="badge badge-guidance">Guidance</span>
                         </div>
-                        <div class="feature-desc">Cascade reads rules but enforcement is not guaranteed</div>
+                        <div class="feature-desc">Coding Agent reads rules but enforcement is not guaranteed</div>
                     </div>
                     
                     <div class="feature-card">
@@ -916,7 +916,7 @@
                             <span class="feature-title">Skills</span>
                             <span class="badge badge-guidance">Guidance</span>
                         </div>
-                        <div class="feature-desc">Available for Cascade to reference but invocation is invisible</div>
+                        <div class="feature-desc">Available for Coding Agent to reference but invocation is invisible</div>
                     </div>
                 </div>
             </div>
@@ -926,7 +926,7 @@
         <div class="model-section" style="border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.05); margin-top: 40px;">
             <div class="model-header">
                 <h2 style="color: #a78bfa;">📓 Project Journal — Cross-Session State Tracking</h2>
-                <p>Tool-agnostic tracking that works with Cascade, Claude Code, Cursor, and any future AI agent</p>
+                <p>Tool-agnostic tracking that works with Coding Agent, Claude Code, Cursor, and any future AI agent</p>
             </div>
             
             <div class="authority-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px;">
@@ -961,7 +961,7 @@
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">1</div>
                     <div class="step-content">
                         <div class="step-title">One-time setup per project</div>
-                        <div class="step-desc"><code>journal setup-hooks</code> → <code>journal init-agents</code> (creates AGENTS.md block + .cursor/rules/state.mdc + initial state-summary.md)</div>
+                        <div class="step-desc"><code>nexus init</code> creates the canonical AGENTS.md block, project skills, native adapters, install manifest, and initial state-summary.md</div>
                     </div>
                 </div>
                 <div class="model-step">
@@ -975,7 +975,7 @@
                     <div class="step-number" style="background: rgba(139,92,246,0.2); color: #a78bfa;">3</div>
                     <div class="step-content">
                         <div class="step-title">Any AI agent reads state on entry</div>
-                        <div class="step-desc">AGENTS.md (Codex/Cursor/Aider/Windsurf), CLAUDE.md (Claude Code), .cursor/rules/state.mdc (Cursor), .windsurf/rules/01-project-state.md (Cascade) all point at .nexus/state-summary.md as the canonical AI-first read</div>
+                        <div class="step-desc">AGENTS.md is the shared entry point for Codex, Devin, Cursor, and Copilot/VS Code. CLAUDE.md imports it, while .agents/skills and the synchronized .claude/skills projection provide just-in-time workflows.</div>
                         <div class="step-status"><span class="badge badge-works">Cross-tool surface</span></div>
                     </div>
                 </div>
@@ -999,7 +999,7 @@
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px;">
                 <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
                     <div style="color: #a78bfa; font-weight: 700; margin-bottom: 8px;">🤖 .nexus/state-summary.md</div>
-                    <div style="color: #94a3b8; font-size: 0.85rem;">AI-optimized snapshot (~200 lines). Status, Active Now, Blockers, Recent Work (CC-grouped), Most-Changed Files, Recent Commits. <strong>Read this first.</strong></div>
+                    <div style="color: #94a3b8; font-size: 0.85rem;">Four-field snapshot (at most 80 lines): Intent, Changes Made, Decisions Taken, Next Steps / Blockers. <strong>Read this first.</strong></div>
                 </div>
                 <div style="background: rgba(255,255,255,0.04); border-radius: 10px; padding: 16px;">
                     <div style="color: #4ade80; font-weight: 700; margin-bottom: 8px;">📄 .nexus/state.md</div>

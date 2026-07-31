@@ -121,10 +121,12 @@ def _ensure_registered() -> None:
     from nexus.cli.generators.claude_md import generate as claude_gen
     from nexus.cli.generators.cursor_rules import generate as cursor_gen
     from nexus.cli.generators.copilot import generate as copilot_gen
+    from nexus.cli.generators.review_md import generate as review_gen
     _GENERATORS["agents_md"] = agents_gen
     _GENERATORS["claude"] = claude_gen
     _GENERATORS["cursor"] = cursor_gen
     _GENERATORS["copilot"] = copilot_gen
+    _GENERATORS["devin-review"] = review_gen
 
 
 def run_all(

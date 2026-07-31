@@ -4,7 +4,8 @@ Covers:
 - The status-bubble-up regression where secrets findings (which lack a
   ``severity`` field) failed to flip ``run_security()`` from 'warn' to 'fail'
   even though the score calculation correctly penalized them.
-- v0.2 expectations: missing ``.windsurf/*`` is informational (not fail);
+- v0.3 expectations: legacy ``.windsurf/*`` is optional while
+  canonical ``.agents/skills`` is health-checked;
   ``.nexus/profile.json`` is the new SoT and gets its own check;
   ``.cursorrules`` is replaced by ``.cursor/rules/00-core.mdc`` in the
   cross-IDE expectation list.
@@ -71,25 +72,22 @@ def test_run_security_warn_for_non_secret_issues(project):
 
 
 # --------------------------------------------------------------------------
-# v0.2 surface checks
+# v0.3 surface checks
 # --------------------------------------------------------------------------
 
-class TestV02HealthExpectations:
-    """The component checker should treat Windsurf as optional and look for
-    ``.cursor/rules/00-core.mdc`` instead of the deprecated ``.cursorrules``."""
+class TestV03HealthExpectations:
+    """The component checker uses canonical Agent Skills and modern adapters."""
 
     def test_cross_ide_expectation_uses_modern_cursor_path(self):
         assert ".cursor/rules/00-core.mdc" in EXPECTED_CROSS_IDE
         assert ".cursorrules" not in EXPECTED_CROSS_IDE
 
-    def test_missing_windsurf_dirs_are_info_not_fail(self, tmp_path):
-        for fn in (_check_rules, _check_skills, _check_workflows):
-            result = fn(tmp_path)
-            assert result["status"] == "pass", f"{fn.__name__} should be pass on bare project, got {result['status']}"
-            for issue in result["issues"]:
-                assert issue["severity"] == "info", (
-                    f"{fn.__name__} missing-dir issue should be 'info', got {issue}"
-                )
+    def test_missing_legacy_rules_are_info_but_canonical_skills_warn(self, tmp_path):
+        rules = _check_rules(tmp_path)
+        assert rules["status"] == "fail"
+        assert any("AGENTS.md" in issue["message"] for issue in rules["issues"])
+        assert _check_skills(tmp_path)["status"] == "warn"
+        assert _check_workflows(tmp_path)["status"] == "pass"
 
     def test_check_profile_warns_when_missing(self, tmp_path):
         result = _check_profile(tmp_path)
@@ -99,7 +97,7 @@ class TestV02HealthExpectations:
     def test_check_profile_passes_when_present(self, tmp_path):
         (tmp_path / ".nexus").mkdir()
         (tmp_path / ".nexus" / "profile.json").write_text(
-            json.dumps({"nexus_version": "0.2.0", "tier": "fast"}),
+            json.dumps({"nexus_version": "0.3.0", "tier": "fast"}),
             encoding="utf-8",
         )
         result = _check_profile(tmp_path)
@@ -111,15 +109,11 @@ class TestV02HealthExpectations:
         result = _check_profile(tmp_path)
         assert result["status"] == "fail"
 
-    def test_run_components_no_high_severity_for_v02_project(self, tmp_path):
-        """A v0.2 project with profile.json + AGENTS.md + CLAUDE.md +
-        .cursor/rules/00-core.mdc + copilot-instructions.md should not
-        produce any high-severity component issues just because Windsurf
-        is absent."""
-        # Seed v0.2 surface
+    def test_run_components_no_high_severity_for_v03_project(self, tmp_path):
+        """A v0.3 canonical surface has no high-severity component issues."""
         (tmp_path / ".nexus").mkdir()
         (tmp_path / ".nexus" / "profile.json").write_text(
-            json.dumps({"nexus_version": "0.2.0", "tier": "fast"}),
+            json.dumps({"nexus_version": "0.3.0", "tier": "fast"}),
             encoding="utf-8",
         )
         (tmp_path / "AGENTS.md").write_text("# A", encoding="utf-8")
@@ -128,10 +122,13 @@ class TestV02HealthExpectations:
         (tmp_path / ".cursor" / "rules" / "00-core.mdc").write_text("---\n---\n", encoding="utf-8")
         (tmp_path / ".github").mkdir()
         (tmp_path / ".github" / "copilot-instructions.md").write_text("# Copilot", encoding="utf-8")
+        skill = tmp_path / ".agents" / "skills" / "smoke" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("---\nname: smoke\ndescription: Smoke test\n---\n", encoding="utf-8")
 
         components = run_components(tmp_path)
         all_issues = []
         for section in ("profile", "rules", "skills", "workflows", "cross_ide", "templates"):
             all_issues.extend(components.get(section, {}).get("issues", []))
         high = [i for i in all_issues if i.get("severity") == "high"]
-        assert high == [], f"unexpected high-severity issues on v0.2 fixture: {high}"
+        assert high == [], f"unexpected high-severity issues on v0.3 fixture: {high}"

@@ -45,6 +45,7 @@ _NEXUS_DIR = _CLI_DIR.parent
 if str(_NEXUS_DIR.parent) not in sys.path:
     sys.path.insert(0, str(_NEXUS_DIR.parent))
 
+from nexus import __version__
 from nexus.cli.security import audit_log
 
 
@@ -75,9 +76,9 @@ class AuditGroup(click.Group):
 
 
 @click.group(cls=AuditGroup)
-@click.version_option(version="0.2.0", prog_name="nexus")
+@click.version_option(version=__version__, prog_name="nexus")
 def cli():
-    """Nexus CLI Toolkit — profile-driven cross-IDE generator with drift detection."""
+    """Nexus CLI Toolkit — provider-neutral project context and operations."""
     pass
 
 
@@ -97,12 +98,17 @@ def prereqs_cmd(ctx, output_format, component, guide):
 @cli.command("smoketest")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
 @click.option("--level", type=click.Choice(["quick", "full"]), default="quick", help="Test depth.")
+@click.option("--isolated-install", is_flag=True,
+              help="Build and install the project wheel in a temporary virtual environment.")
 @click.option("--project-dir", default=".", help="Project directory to test.")
 @click.pass_context
-def smoketest_cmd(ctx, output_format, level, project_dir):
+def smoketest_cmd(ctx, output_format, level, isolated_install, project_dir):
     """Run tiered smoke tests on the project."""
     from nexus.cli.tools.smoketest import run_smoketest
-    run_smoketest(output_format=output_format, level=level, project_dir=project_dir)
+    result = run_smoketest(output_format=output_format, level=level, project_dir=project_dir,
+                           isolated_install=isolated_install)
+    if result["status"] == "fail":
+        ctx.exit(1)
 
 
 @cli.command("debug")
@@ -183,21 +189,24 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
               help="Skip the wizard and force a specific tier.")
 @click.option("--accept-defaults", "--yes", "-y", "accept_defaults", is_flag=True,
               help="Auto-confirm interactive prompts (hook install, journal refresh, etc.). For CI/automation.")
+@click.option("--dry-run", is_flag=True, help="Preview all planned writes and migrations without changing files.")
+@click.option("--consumers", default="all",
+              help="Comma-separated consumers: all,codex,devin,claude,cursor,copilot,devin-review.")
 @click.option("--project-dir", default=".", help="Project to initialize.")
 @click.pass_context
-def init_cmd(ctx, output_format, upgrade, refresh, template, accept_defaults, project_dir):
+def init_cmd(ctx, output_format, upgrade, refresh, template, accept_defaults, dry_run, consumers, project_dir):
     """Bootstrap (or upgrade) the current project with Nexus."""
     from nexus.cli.tools.init import run_init
     run_init(project_dir=project_dir, output_format=output_format,
              upgrade=upgrade, refresh=refresh, template=template,
-             accept_defaults=accept_defaults)
+             accept_defaults=accept_defaults, dry_run=dry_run, consumers=consumers)
 
 
 @cli.command("journal")
 @click.argument("subcommand", type=click.Choice([
     "session-start", "session-end", "log", "status", "diff", "export",
     "setup-hooks", "next", "blocker", "export-summary", "init-agents",
-    "decision", "blame", "health",
+    "decision", "intent", "handoff", "blame", "health",
 ]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
@@ -255,13 +264,89 @@ def generate_cmd(ctx, targets, dry_run, force, output_format, project_dir):
 
 @cli.command("doctor")
 @click.option("--deep", is_flag=True, help="Re-run stack detection and diff against stored profile.")
+@click.option("--consumer", default="all",
+              help="Consumer to verify: all,codex,devin,claude,cursor,copilot,devin-review,vscode.")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
 @click.option("--project-dir", default=".", help="Project directory.")
 @click.pass_context
-def doctor_cmd(ctx, deep, output_format, project_dir):
+def doctor_cmd(ctx, deep, consumer, output_format, project_dir):
     """Check rule drift, version mismatch, missing IDE files, and journal health."""
     from nexus.cli.tools.doctor import run_doctor
-    run_doctor(output_format=output_format, project_dir=project_dir, deep=deep)
+    result = run_doctor(output_format=output_format, project_dir=project_dir, deep=deep,
+                        consumer=consumer)
+    if result["status"] == "fail":
+        ctx.exit(1)
+
+
+@cli.group("context")
+def context_group():
+    """Audit, map, mask, scope, and route AI coding context."""
+    pass
+
+
+@context_group.command("audit")
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory.")
+def context_audit_cmd(output_format, project_dir):
+    """Report effective context, duplication, ignores, and readiness."""
+    from nexus.cli.tools.context import audit_context, audit_status, emit_context_result
+    details = audit_context(Path(project_dir))
+    status = audit_status(details)
+    emit_context_result("context-audit", details, output_format, status)
+    if status.value == "fail":
+        raise click.exceptions.Exit(1)
+
+
+@context_group.command("map")
+@click.argument("query", required=False)
+@click.option("--engine", type=click.Choice(["inventory", "repomix"]), default="inventory")
+@click.option("--budget-tokens", type=click.IntRange(min=64), default=2000)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory.")
+def context_map_cmd(query, engine, budget_tokens, output_format, project_dir):
+    """Build a bounded repository skeleton, optionally filtered by QUERY."""
+    from nexus.cli.tools.context import build_map, emit_context_result
+    emit_context_result("context-map", build_map(Path(project_dir), query, engine, budget_tokens), output_format)
+
+
+@context_group.command("mask")
+@click.option("--input", "input_value", required=True, help="Project-relative file or - for stdin.")
+@click.option("--kind", type=click.Choice(["auto", "test", "lint", "build"]), default="auto")
+@click.option("--exit-code", type=int, default=0)
+@click.option("--max-chars", type=click.IntRange(min=64), default=1200)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory.")
+def context_mask_cmd(input_value, kind, exit_code, max_chars, output_format, project_dir):
+    """Compress test, lint, build, or terminal output deterministically."""
+    from nexus.cli.tools.context import emit_context_result, mask_observation, read_mask_input
+    try:
+        raw = read_mask_input(Path(project_dir), input_value)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit_context_result("context-mask", mask_observation(raw, kind, exit_code, max_chars), output_format)
+
+
+@context_group.command("ignores")
+@click.option("--check", "check_only", is_flag=True, help="Only report missing patterns (default).")
+@click.option("--apply", "apply_changes", is_flag=True, help="Write idempotent managed blocks.")
+@click.option("--tool", type=click.Choice(["all", "codeium", "cursor", "aider", "repomix"]), default="all")
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+@click.option("--project-dir", default=".", help="Project directory.")
+def context_ignores_cmd(check_only, apply_changes, tool, output_format, project_dir):
+    """Check or apply AI-tool context ignore rules."""
+    from nexus.cli.tools.context import emit_context_result, manage_ignores
+    if check_only and apply_changes:
+        raise click.UsageError("--check and --apply are mutually exclusive")
+    emit_context_result("context-ignores", manage_ignores(Path(project_dir), tool, apply_changes), output_format)
+
+
+@context_group.command("route")
+@click.option("--task-class", "task_class", type=click.Choice(["mechanical", "routine", "complex", "high-risk"]), required=True)
+@click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
+def context_route_cmd(task_class, output_format):
+    """Recommend a capability role and verification depth."""
+    from nexus.cli.tools.context import emit_context_result, route_task
+    emit_context_result("context-route", route_task(task_class), output_format)
 
 
 if __name__ == "__main__":

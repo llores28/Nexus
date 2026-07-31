@@ -1,6 +1,6 @@
 # Bootstrap Project Intake (Wizard Input)
 
-Copy/paste this into Cascade when running `/bootstrap-wizard` and fill values.
+Copy/paste this into the active coding agent when running `/bootstrap-wizard` and fill values.
 
 ```yaml
 project_name:

@@ -6,6 +6,7 @@ from typing import Optional
 import click
 
 from nexus.cli.generators import ALL_TARGETS, run_all
+from nexus.cli.installation import ALL_CONSUMERS, apply_generated_files, load_manifest
 from nexus.cli.profile import hash_profile, load
 from nexus.cli.utils import OutputFormat, Status, emit, make_result
 
@@ -41,7 +42,18 @@ def run_generate(
             )
         target_list = requested
 
-    results = run_all(profile, pd, targets=target_list, dry_run=dry_run, force=force)
+    planned = run_all(profile, pd, targets=target_list, dry_run=True)
+    manifest = load_manifest(pd) or {}
+    consumers = tuple(manifest.get("consumers", ())) or ALL_CONSUMERS
+    actions = apply_generated_files(
+        pd,
+        (item for item, _ in planned),
+        tier=profile.tier,
+        consumers=consumers,
+        dry_run=dry_run,
+        force=force,
+    )
+    results = list(zip((item for item, _ in planned), (item.action for item in actions)))
     h = hash_profile(profile)
 
     if fmt == OutputFormat.HUMAN:

@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-bootstrap"
-version = "0.2.0"
+version = "0.3.0"
 description = "Intelligent Project Operating System — generates AI-powered operating systems for any repository"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Lannys Lores" }]
-keywords = ["ai", "scaffolding", "windsurf", "claude-code", "copilot", "cursor"]
+keywords = ["ai", "scaffolding", "devin", "openai-codex", "claude-code", "copilot", "cursor"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -48,4 +48,10 @@ include = ["nexus*"]
 exclude = ["tests*", ".nexus*", ".windsurf*", ".cache*"]
 
 [tool.setuptools.package-data]
-nexus = ["*.md", "*.html"]
+nexus = [
+    "*.md",
+    "*.html",
+    "bundles/default/skills/*/*",
+    "bundles/default/skills/*/*/*",
+    "bundles/default/skills/*/*/*/*",
+]

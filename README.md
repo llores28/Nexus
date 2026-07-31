@@ -1,8 +1,8 @@
 # Nexus — Intelligent Project Operating System
 
-Nexus generates project-specific AI dev configurations across IDEs from a single source of truth. It auto-detects your stack, then projects a typed `.nexus/profile.json` onto **AGENTS.md**, **CLAUDE.md**, **`.cursor/rules/*.mdc`**, and **`.github/copilot-instructions.md`** + per-language instructions — keeping all four IDEs in sync as your codebase evolves.
+Nexus generates provider-neutral project context from a single source of truth. It auto-detects your stack, then projects `.nexus/profile.json` into canonical **AGENTS.md** and **`.agents/skills`**, plus thin native adapters for Claude, Cursor, GitHub Copilot, Devin Review, and VS Code-hosted agents.
 
-Drift detection (`nexus doctor`) flags any file whose embedded profile-hash stamp diverges from the current profile, so multi-IDE rule drift — the #1 pain point in 2026 multi-tool teams — never silently piles up.
+Drift detection (`nexus doctor`) validates the install manifest, provider discovery, skill projections, package provenance, and generated stamps so incompatible surfaces cannot silently pass readiness checks.
 
 ---
 
@@ -10,24 +10,33 @@ Drift detection (`nexus doctor`) flags any file whose embedded profile-hash stam
 
 Run from the directory of the project you want to bootstrap.
 
-### Recommended — clone first (all platforms, most reliable)
+> **Release status:** the commands below become available when the immutable
+> `v0.3.0` GitHub tag is published. While developing the unreleased branch,
+> build the wheel and pass its path with `-Source` / `--source`; PyPI is not an
+> installation source for this release.
 
-```bash
-git clone https://github.com/llores28/Nexus.git
-cd Nexus
-```
-
-Then run the setup script for your platform:
+### Recommended — run the pinned installer from your project
 
 **Windows PowerShell:**
 ```powershell
-.\setup.ps1
+irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1
+Get-Content .\setup-nexus.ps1                    # inspect before execution
+Unblock-File .\setup-nexus.ps1
+.\setup-nexus.ps1 -ProjectDir . -Template team -AcceptDefaults
 ```
 
 **macOS / Linux / Git Bash:**
 ```bash
-./setup.sh
+curl -fsSLo setup-nexus.sh https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.sh
+less setup-nexus.sh                              # inspect before execution
+bash setup-nexus.sh --project-dir . --template team --yes
 ```
+
+The installer creates a project-local `.venv`, installs the immutable `v0.3.0`
+release, previews or applies Nexus, and invokes the venv's own executable. A
+local Nexus clone is supported for development, but requires an explicit target:
+`.\setup.ps1 -ProjectDir C:\path\to\project` or
+`./setup.sh --project-dir /path/to/project`.
 
 ---
 
@@ -40,9 +49,9 @@ Then run the setup script for your platform:
 
 ```powershell
 # Download to disk, inspect, then run — AMSI does NOT flag local file execution
-irm https://raw.githubusercontent.com/llores28/Nexus/main/setup.ps1 -OutFile setup-nexus.ps1
+irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1
 Unblock-File setup-nexus.ps1        # remove Mark-of-the-Web
-.\setup-nexus.ps1                   # runs normally; safe to delete after
+.\setup-nexus.ps1 -ProjectDir . -Template team -AcceptDefaults
 ```
 
 > **Windows users: use PowerShell or Git Bash — not `bash` from a cmd/PowerShell prompt.**
@@ -54,9 +63,8 @@ Unblock-File setup-nexus.ps1        # remove Mark-of-the-Web
 
 ### macOS / Linux / Git Bash (Windows)
 
-```bash
-curl -sSL https://raw.githubusercontent.com/llores28/Nexus/main/setup.sh | bash
-```
+Do not pipe the script into `bash`; the interactive wizard needs standard input.
+Download it first using the pinned command above.
 
 > On Windows, run this inside **Git Bash** (comes with [Git for Windows](https://git-scm.com/download/win)), not cmd or PowerShell.
 
@@ -64,21 +72,32 @@ The script:
 1. Creates a project-local `.venv`
 2. Installs (or upgrades) Nexus into it
 3. Runs `nexus init` — auto-detects your stack and runs a 7-question wizard to pick your tier (Fast / Team / Enterprise)
-4. Writes `.nexus/profile.json` and generates IDE files (AGENTS.md, CLAUDE.md, .cursor/rules/, .github/copilot-instructions.md), initializes git + journal hooks, runs a health check
+4. Installs canonical `.agents/skills`, Claude's `.claude/skills` projection, a tracked install manifest, provider adapters, journal hooks, and truthful diagnostics
 
 ### Verify it worked
 ```bash
-nexus doctor              # all hashes current, all expected files present
+nexus doctor --consumer all --deep   # manifests, skills, adapters, projections, drift
 nexus journal status      # current project state
 ```
 
-`nexus doctor` is the v0.2 health authority for rule drift. The legacy `nexus health check` still works (component/security/audit-trail tier) and is fine to run alongside.
+`nexus doctor` is the v0.3 health authority for rule drift. The legacy `nexus health check` remains available for component, security, and audit-trail checks.
+
+Consumer verification after onboarding:
+
+- Codex, Devin, Cursor, and Copilot should discover root `AGENTS.md` and
+  `.agents/skills` without another Nexus ruleset.
+- In Claude Code, approve the `@AGENTS.md` import when prompted. Restart the
+  active session if `.claude/skills` was created after that session started.
+- In VS Code, run **Chat: Open Customizations** and confirm the current release
+  discovers Agent Skills; VS Code is a host and receives no duplicated ruleset.
 
 ### Power-user flags
 ```bash
 nexus init --template enterprise   # skip wizard, force a tier
 nexus init --upgrade               # re-run init on an existing project
-nexus init --accept-defaults       # auto-confirm all prompts (CI / unattended)
+nexus init --upgrade --dry-run     # preview writes, collisions, and migrations
+nexus init --consumers codex,claude,cursor
+nexus init --template team --yes   # unattended fresh setup requires an explicit tier
 nexus profile detect               # refresh profile from current project state
 nexus generate                     # regenerate IDE files from current profile
 nexus generate --target cursor     # only refresh one IDE family
@@ -97,8 +116,8 @@ For projects that already have older Nexus state (`.nexus/state.json` exists, po
 # if you cloned the repo:
 cd /path/to/Nexus && git pull
 
-# if you pip-installed:
-pip install -U nexus-bootstrap
+# if installed with the project installer, rerun the pinned v0.3.0 installer
+# with the same -ProjectDir/--project-dir
 ```
 
 **2. From inside your project, run the upgrade**
@@ -118,10 +137,10 @@ nexus doctor
 
 ### What the upgrade does
 
-- Reuses the tier from existing `.nexus/state.json` — no wizard.
-- Synthesizes `.nexus/profile.json` from auto-detection + the stored tier (one-time migration on first v0.2 run).
+- Reuses the tier from `.nexus/profile.json`, then the install manifest, then legacy state.
+- Synthesizes `.nexus/profile.json` from auto-detection and the stored tier.
 - Re-validates / installs git hooks (idempotent).
-- Runs all v0.2 generators: `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-core.mdc` + per-framework, `.github/copilot-instructions.md` + `.github/instructions/<lang>.instructions.md`.
+- Synchronizes canonical skills, Claude's native projection, and thin provider adapters without overwriting collisions.
 - Refreshes `state-dashboard.html` and `state-summary.md`.
 
 ### What's preserved (won't be clobbered)
@@ -136,17 +155,20 @@ nexus doctor
 ```bash
 git commit -am "snapshot before nexus upgrade"
 nexus init --upgrade
+nexus init --upgrade --dry-run              # inspect first
 git diff                                # review what changed
-nexus doctor                            # confirm all hashes current
+nexus doctor --consumer all --deep      # confirm discovery and ownership
 ```
 
-If you previously had `.cursorrules` (legacy single-file format), `nexus doctor` won't complain — but the file is now superseded by `.cursor/rules/00-core.mdc`. You can delete `.cursorrules` once you've confirmed Cursor picks up the new files.
+If you previously had `.cursorrules` (legacy single-file format), `nexus doctor`
+reports it as a warning. It is superseded by `.cursor/rules/00-core.mdc`; remove
+it explicitly only after confirming Cursor discovers the new files.
 
 ---
 
 ## How It Works
 
-### Profile-driven generation (v0.2)
+### Profile-driven generation (v0.3)
 
 ```
                 ┌─────────────────────────┐
@@ -169,7 +191,7 @@ If you previously had `.cursorrules` (legacy single-file format), `nexus doctor`
 Each generated file embeds a 12-char `sha256(profile)` stamp:
 
 ```html
-<!-- nexus: profile=62237f7d2e08 generator=cursor.00-core nexus_version=0.2.0 -->
+<!-- nexus: profile=62237f7d2e08 generator=cursor.00-core nexus_version=0.3.0 -->
 ```
 
 `nexus doctor` reads these stamps in O(1) and reports drift the moment your profile changes or someone hand-edits a managed file.
@@ -190,12 +212,13 @@ You add your own rules by editing `.nexus/profile.json` and appending to the `ru
 }
 ```
 
-Then run `nexus generate` to project the new rule onto every IDE.
+Then run `nexus generate`. Shared rules are emitted once into `AGENTS.md`;
+provider adapters receive only rules explicitly targeted to that provider.
 
 | Field | Effect |
 |---|---|
-| `applies_to` | Globs that scope this rule to specific files. Empty = whole repo (lands in `.cursor/rules/00-core.mdc`, `copilot-instructions.md`). With globs → lands in `10-<framework>.mdc` and `<lang>.instructions.md`. |
-| `targets` | `null` means emit to all IDEs. Or restrict to e.g. `["cursor", "copilot"]`. |
+| `applies_to` | Globs that scope the canonical rule. Provider-specific targeted rules may also produce scoped adapter files. |
+| `targets` | `null` means canonical `AGENTS.md` only. Use `["cursor"]`, `["copilot"]`, or `["claude"]` only for a genuine provider delta. |
 | `tier_min` | Rule only emits at this tier or higher (`fast`, `team`, `enterprise`). |
 | `severity` | `info`, `warn`, or `must`. Annotates the rule in human-facing output. |
 
@@ -211,20 +234,21 @@ Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl`.
 
 | Command | Subcommands | What It Does |
 |---|---|---|
-| `init` | — | Bootstrap or upgrade a project. `--upgrade` reuses tier; `--template <fast\|team\|enterprise>` skips the wizard; `--accept-defaults` auto-confirms all prompts. |
+| `init` | — | Bootstrap or upgrade a project. Supports `--dry-run`, `--consumers`, tier reuse, collision-safe skills, and `--yes`/`--accept-defaults`. |
 | **`profile`** | `detect`, `show`, `set` | Manage `.nexus/profile.json`. `detect` re-derives from current project state; `set tier <fast\|team\|enterprise>` switches tier. |
 | **`generate`** | — | Regenerate IDE files from the profile. `--target a,b` restricts to specific generators (`agents_md`, `claude`, `cursor`, `copilot`); `--dry-run` previews; `--force` overrides hand-edits to managed blocks. |
-| **`doctor`** | — | Drift detection. Verifies every generated file's stamp matches the current profile hash, the CLI version aligns, and all expected files are present. `--deep` re-runs stack detection. |
+| **`doctor`** | — | Authoritative readiness check for package provenance, install manifest, skills, Claude projection, provider adapters, ignores, journal, and stack drift. Supports `--consumer` and `--deep`. |
 | `journal` | `status`, `log`, `diff`, `next`, `blocker`, `decision`, `health`, `blame`, `export`, `export-summary`, `setup-hooks`, `init-agents`, `session-start`, `session-end` | Cross-session project state with auto-rolling sessions, daily rotation, drift detection, MADR ADRs, and cross-tool surface. |
 | `health` | `check`, `components`, `security`, `usage`, `report` | Legacy 4-tier health monitor (file inventory, security posture, audit trail). |
 | `prereqs` | — | Checks prerequisites (Python, Git, Docker, Node, extensions). `--guide` outputs setup instructions. |
-| `smoketest` | — | Auto-detects project type (Node/Python/Go), runs deps → lint → typecheck → test. `--level full` adds build + server health check. |
+| `smoketest` | — | Auto-detects project type and runs non-mutating environment checks, lint, typecheck, and tests. `--isolated-install` verifies a wheel in a temporary venv. |
 | `debug` | `logs`, `trace`, `deps`, `env`, `ports`, `secrets-scan` | Log scanning, error tracing, dependency audit, env validation, port checking, secret detection. |
 | `research` | `docs`, `deps`, `changelog`, `compare` | Search docs, check dependency info, review changelogs, compare packages. |
 | `scrape` | `page`, `api`, `links`, `docs` | Web scraping for external docs and APIs. |
 | `scaffold` | — | Generates a new CLI tool from template with security framework integration. |
 | `local-env` | `init`, `build`, `up`, `down`, `logs`, `status`, `validate` | Docker container management and validation. |
 | `supply-chain` | `scan`, `ioc`, `audit`, `advisories` | Detect compromised npm packages and malicious IOCs. |
+| `context` | `audit`, `map`, `mask`, `ignores`, `route` | Inspect, bound, compress, scope, and route coding-agent context. |
 
 **Stack**: Python 3.10+, Click 8.1.7, Rich 13.9.4, PyYAML 6.0.2, httpx 0.27.2, beautifulsoup4 4.12.3.
 
@@ -232,13 +256,13 @@ Every CLI invocation is audit-logged to `.cache/bs-cli/audit.jsonl`.
 
 ## Bootstrap Templates (3 tiers)
 
-Templates that influence which seed rules get composed into your profile and which Cascade prompt scaffold lands in `BOOTSTRAP.md` (the latter is now optional — useful only if you want narrative AI-driven customization beyond what the structured generators emit).
+Templates influence which seed rules are composed into the profile and which provider-neutral prompt scaffold lands in `BOOTSTRAP.md`.
 
 | Template | File | Use Case |
 |---|---|---|
-| **Fast** | `nexus/1Fast-ws-Bootstrap.md` | Solo/daily development — speed over process |
-| **Team** | `nexus/2Team-ws-Bootstrap.md` | Team collaboration — balanced process |
-| **Enterprise** | `nexus/3Enterprise-ws-Bootstrap.md` | Compliance/governance — strict controls |
+| **Fast** | `nexus/1Fast-Bootstrap.md` | Solo/daily development — speed over process |
+| **Team** | `nexus/2Team-Bootstrap.md` | Team collaboration — balanced process |
+| **Enterprise** | `nexus/3Enterprise-Bootstrap.md` | Compliance/governance — strict controls |
 
 Higher tiers add additional seed rules (e.g. enterprise adds `pr-required`, `adr-for-decisions`, `audit-log`).
 
@@ -249,33 +273,38 @@ Supporting files:
 
 ---
 
-## Cross-IDE Support
+## Cross-Agent and IDE Support
 
 Nexus generates these files from `.nexus/profile.json`:
 
-| File | IDE | Mode | Contents |
+| File | Consumer | Mode | Contents |
 |---|---|---|---|
-| `AGENTS.md` | Linux Foundation cross-tool standard (Cursor, Windsurf, Copilot, Claude, Codex) | upsert | Project context, tier, stack, conventions, journal pointers |
-| `CLAUDE.md` | Claude Code | upsert | Stack-specific constraints + journal pointers |
-| `.cursor/rules/00-core.mdc` | Cursor | overwrite | Whole-repo rules with `alwaysApply: true` |
-| `.cursor/rules/10-<framework>.mdc` | Cursor | overwrite | Per-framework scoped rules with `globs:` |
-| `.github/copilot-instructions.md` | VS Code Copilot | overwrite | Repo-wide conventions |
-| `.github/instructions/<lang>.instructions.md` | VS Code Copilot | overwrite | Per-language with `applyTo:` frontmatter |
+| `AGENTS.md` | OpenAI Codex, Devin, Cursor, Copilot | upsert | Canonical shared constraints, stack, and journal pointers |
+| `.agents/skills/*/SKILL.md` | Codex, Devin, Cursor, Copilot/VS Code | manifest-owned files | Canonical reusable workflows loaded just in time |
+| `CLAUDE.md` | Claude Code and its VS Code extension | upsert | `@AGENTS.md` import plus Claude-only deltas |
+| `.claude/skills/*/SKILL.md` | Claude Code | synchronized projection | Byte-equivalent projection of canonical project skills |
+| `.cursor/rules/*.mdc` | Cursor | overwrite | Cursor-only scoped deltas |
+| `.github/copilot-instructions.md` | GitHub Copilot and VS Code | upsert | Thin adapter plus Copilot-only deltas |
+| `.github/instructions/*.instructions.md` | GitHub Copilot | overwrite | Copilot-only path-scoped deltas |
+| `REVIEW.md` | Devin Review, optional | user-owned | Review-only guidance not duplicated from `AGENTS.md` |
 
 **Mode semantics:**
 
 - **upsert** — preserves user content outside the managed block (`<!-- nexus:<id>:begin --> ... <!-- nexus:<id>:end -->`). Edit freely above/below; the block is regenerated on `nexus generate`.
 - **overwrite** — file is fully owned by Nexus. Hand-editing the body triggers a `nexus doctor` warning; re-run `nexus generate` to refresh.
 
-### Optional Cascade Surface (`.windsurf/*`)
+### Legacy migration surface
 
-The Nexus repo itself ships a Windsurf rule/skill/workflow surface for development inside Windsurf. Bootstrapped projects can opt in by populating these directories — `nexus doctor` treats them as informational and does not penalize their absence. Native Windsurf generators are tracked for v0.3.
+`nexus init --upgrade --dry-run` previews legacy `.windsurf/rules`,
+`.windsurf/skills`, and `.windsurf/workflows` inputs. Skills and reusable
+workflows migrate collision-safely; rules remain manual AGENTS/profile review
+candidates. Nexus never changes the legacy source files.
 
 ---
 
 ## Project Journal System (`journal` command)
 
-Persistent cross-session project state tracking — tool-agnostic (works with Cascade, Claude Code, Cursor, or any AI agent).
+Persistent cross-session state tracking for Codex, Devin, Claude, Cursor, Copilot, and other agents.
 
 **How it works:**
 
@@ -286,21 +315,23 @@ Persistent cross-session project state tracking — tool-agnostic (works with Ca
 | `diff` | Shows files changed since session start (git or mtime fallback) |
 | `next` | `add <task>` / `done <idx\|substr>` / `list` / `clear` — non-interactive task queue CRUD |
 | `blocker` | `add <text>` / `clear` / `list` — non-interactive blocker CRUD |
-| `decision` | `add "<title>"` creates a MADR-minimal ADR at `docs/decisions/NNNN-slug.md`; `list` enumerates existing ADRs |
+| `intent` | `set "<goal>"` / `show` / `clear` — anchors the active objective |
+| `decision` | `add "<title>"` creates an ADR; `note "<text>"` records a compact decision |
+| `handoff` | Emits the stable four-field state compaction payload |
 | `health` | Diagnoses drift: missing/stale/commit-drift/PRD-drift. Pass `refresh` to backfill missing commits and regenerate dashboards |
 | `blame <file>` | Cross-references a file across git log, state.done, and daily journal archive |
 | `export` | Regenerates `state-summary.md` (AI-optimized) + `state-dashboard.html` (self-contained dark-mode dashboard with git-derived heatmap) |
 | `export-summary` | Regenerates only `state-summary.md` (cheap, no HTML) |
 | `setup-hooks [--force]` | Installs/upgrades git `post-commit` + `pre-push` hooks (versioned; `--force` overwrites Nexus-installed hooks) |
-| `init-agents` | Idempotently installs `AGENTS.md` Nexus journal block + `.cursor/rules/state.mdc` for cross-tool agents |
+| `init-agents` | Idempotently installs the compact journal pointer in canonical `AGENTS.md` |
 | `session-start` / `session-end` | **Optional** — sessions auto-roll. Use these only for explicit interactive session lifecycle |
 
 **State files written per project:**
 
 | File | Purpose | AI-readable? |
 |---|---|---|
-| `.nexus/state.md` | Human + AI ground truth: done, next, blockers, session log | ✅ Indexed by Windsurf, read by Claude Code |
-| `.nexus/state-summary.md` | AI-optimized snapshot (≤200 lines) — read this first | ✅ Pointed to by AGENTS.md / CLAUDE.md |
+| `.nexus/state.md` | Full human and AI journal | Read on demand |
+| `.nexus/state-summary.md` | Four-field snapshot (≤80 lines) | Read first |
 | `.nexus/state.json` | Machine-readable source for dashboard | Excluded from indexing |
 | `.nexus/state-dashboard.html` | Static self-contained dashboard | Open in browser |
 
@@ -309,7 +340,7 @@ Persistent cross-session project state tracking — tool-agnostic (works with Ca
 - **On every `git commit`**: `post-commit` hook auto-logs the commit message; the journal CLI auto-rolls the session if stale and regenerates `state-summary.md` + `state-dashboard.html`
 - **On every `git push`**: `pre-push` hook regenerates the dashboard
 - **On `nexus init --upgrade`**: runs `journal health` and offers to backfill any commits not yet in the journal
-- **After AI agent edits**: AGENTS.md and CLAUDE.md instruct Cascade / Claude Code / Cursor to call `journal log` after significant non-commit work
+- **After significant non-commit work**: agents call `journal log`; commits remain hook-managed
 
 **Daily use (all non-interactive, all idempotent):**
 ```bash
@@ -331,12 +362,12 @@ Validates Nexus components and project security posture. Distinct from `nexus do
 
 | Tier | What It Checks | Details |
 |---|---|---|
-| **Components** | `.nexus/profile.json`, cross-IDE files (AGENTS.md, CLAUDE.md, `.cursor/rules/00-core.mdc`, copilot-instructions.md), optional Windsurf surface | File existence, valid frontmatter, size limits (<12KB) |
+| **Components** | `.nexus/profile.json`, canonical `AGENTS.md`, `.agents/skills`, and thin provider adapters | File existence, valid frontmatter, size limits |
 | **Security** | `.gitignore`, `.codeiumignore`, secrets scan, dependencies | Pattern coverage, secret detection, importability of CLI packages |
 | **Usage** | CLI audit trail | Tool usage counts, error rates, duration trends, last activity |
 | **Recommendations** | Actionable fixes | Sorted by severity (critical/high/medium/low) with specific commands |
 
-**Health score**: 0–100 weighted composite. `info`-severity items (e.g. "Windsurf surface absent — optional") don't dock the score; `medium`/`high` issues do. Realistic scores for a clean v0.2 project depend on whether `.gitignore` and `.codeiumignore` are present — both are user-owned and Nexus does not generate them.
+**Health score**: 0–100 weighted composite. Informational legacy-migration notes do not reduce the score; medium/high issues do.
 
 ---
 
@@ -371,10 +402,15 @@ Built into every CLI tool:
 
 Multiple layers reduce unnecessary token consumption:
 
-- **Rule scope** — per-language and per-framework rules emit only to the relevant IDE files (e.g. python rules only land in `.cursor/rules/10-fastapi.mdc`, not in 00-core.mdc)
-- **`.codeiumignore`** — excludes large reference files from Windsurf indexing
-- **Structured CLI output** — JSON by default for machine consumption, minimizing verbose text
-- **`state-summary.md`** — AI-optimized ≤200-line snapshot pointed to by AGENTS.md/CLAUDE.md, so agents read one file instead of the full journal
+- **Canonical instructions** — shared rules live once in `AGENTS.md`; adapters contain only provider deltas.
+- **Just-in-time skills** — `.agents/skills` metadata supports discovery without preloading every workflow.
+- **Repository maps** — `nexus context map` emits a token-bounded inventory or optional Repomix result.
+- **Observation masking** — `nexus context mask` keeps failure signatures and redacts secrets without retaining full logs.
+- **Scoped ignores** — `nexus context ignores` manages idempotent tool-specific blocks without excluding source, tests, manifests, or lockfiles.
+- **Structured state** — `state-summary.md` and `journal handoff` use the four-field compact schema.
+- **Capability routing** — `nexus context route` advises by task risk without volatile provider pricing.
+
+See [`docs/context-efficiency-report.md`](docs/context-efficiency-report.md) for the measured v0.3 before/after instruction footprint.
 
 ---
 
@@ -417,9 +453,9 @@ nexus journal status        # project state dashboard
 ```
 Nexus/
 ├── nexus/
-│   ├── 1Fast-ws-Bootstrap.md          # Fast bootstrap template
-│   ├── 2Team-ws-Bootstrap.md          # Team bootstrap template
-│   ├── 3Enterprise-ws-Bootstrap.md    # Enterprise bootstrap template
+│   ├── 1Fast-Bootstrap.md          # Fast bootstrap template
+│   ├── 2Team-Bootstrap.md          # Team bootstrap template
+│   ├── 3Enterprise-Bootstrap.md    # Enterprise bootstrap template
 │   ├── Bootstrap-Project-Intake.md    # Project intake questionnaire
 │   ├── PRD-Template.md                # PRD generation template
 │   ├── wizard-reference.md            # Wizard logic (excluded from indexing)
@@ -455,7 +491,7 @@ Nexus/
 ├── .nexus/                            # Per-project state (auto-created)
 │   ├── profile.json                   # Single source of truth for cross-IDE generation
 │   ├── state.md                       # Human + AI readable project state
-│   ├── state-summary.md               # AI-optimized ≤200-line snapshot
+│   ├── state-summary.md               # Four-field ≤80-line snapshot
 │   ├── state.json                     # Machine-readable state
 │   └── state-dashboard.html           # Generated static dashboard
 ├── AGENTS.md                          # Cross-tool conventions (managed block + user content)
@@ -476,8 +512,7 @@ Nexus/
 Optional v0.3 surface (intentionally absent from generators today):
 
 ```
-.windsurf/
-├── rules/                             # Activation-triggered Windsurf rules
+.windsurf/                             # Legacy migration inputs only
 ├── skills/                            # SKILL.md definitions
 └── workflows/                         # Slash-command workflows
 ```

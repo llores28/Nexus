@@ -131,12 +131,13 @@ class TestAgentsMdGenerator:
 
 
 class TestClaudeMdGenerator:
-    def test_emits_stack_section(self, tmp_path, fastapi_profile):
+    def test_emits_thin_canonical_adapter(self, tmp_path, fastapi_profile):
         run_all(fastapi_profile, tmp_path, targets=["claude"])
         text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
-        assert "## Stack" in text
-        assert "pytest" in text
-        assert "Pydantic" in text  # rule body present
+        assert "@AGENTS.md" in text
+        assert ".claude/skills" in text
+        assert "Pydantic" not in text  # shared rules stay canonical
+        assert len(text.encode()) < 1024
 
     def test_idempotent(self, tmp_path, fastapi_profile):
         run_all(fastapi_profile, tmp_path, targets=["claude"])
@@ -154,16 +155,12 @@ class TestCursorRulesGenerator:
         assert core.startswith("---")
         assert "alwaysApply: true" in core
         assert "<!-- nexus: profile=" in core
+        assert "AGENTS.md" in core
 
     def test_framework_rule_has_globs(self, tmp_path, fastapi_profile):
         run_all(fastapi_profile, tmp_path, targets=["cursor"])
         fw = (tmp_path / ".cursor" / "rules" / "10-fastapi.mdc")
-        assert fw.exists()
-        text = fw.read_text(encoding="utf-8")
-        assert "globs:" in text
-        assert "**/*.py" in text
-        assert "alwaysApply: false" in text
-        assert "Pydantic" in text  # framework-scoped rule body
+        assert not fw.exists()  # shared scoped rules remain in AGENTS.md
 
     def test_no_framework_rule_when_no_matching_rules(self, tmp_path):
         # Profile claims fastapi but has no python-scoped rules — no 10-fastapi.mdc file
@@ -183,15 +180,13 @@ class TestCopilotGenerator:
         text = (tmp_path / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
         assert "<!-- nexus: profile=" in text
         assert "demo-web" in text
+        assert "AGENTS.md" in text
+        assert len(text.encode()) < 1024
 
     def test_per_lang_has_apply_to(self, tmp_path, nextjs_profile):
         run_all(nextjs_profile, tmp_path, targets=["copilot"])
         path = tmp_path / ".github" / "instructions" / "typescript.instructions.md"
-        assert path.exists()
-        text = path.read_text(encoding="utf-8")
-        assert "applyTo:" in text
-        assert "**/*.ts" in text
-        assert "Avoid any" in text or "avoid any" in text.lower()
+        assert not path.exists()  # no provider-specific delta configured
 
 
 # --------------------------------------------------------------------------
@@ -211,9 +206,25 @@ class TestRunAll:
     def test_default_targets_all(self, tmp_path, fastapi_profile):
         results = run_all(fastapi_profile, tmp_path)
         targets_seen = {f.target for f, _ in results}
-        # All four targets should produce at least one file
-        for t in ALL_TARGETS:
+        # Review guidance is optional and emitted only for explicit deltas.
+        for t in set(ALL_TARGETS) - {"devin-review"}:
             assert t in targets_seen, f"target {t} produced no files"
+        assert "devin-review" not in targets_seen
+
+    def test_devin_review_emits_only_explicit_review_deltas(self, tmp_path, fastapi_profile):
+        review_profile = Profile(
+            **{**fastapi_profile.__dict__, "rules": fastapi_profile.rules + (
+                Rule(
+                    id="review-risk",
+                    text="Flag untested authorization changes.",
+                    targets=("devin-review",),
+                ),
+            )}
+        )
+        run_all(review_profile, tmp_path, targets=["devin-review"])
+        text = (tmp_path / "REVIEW.md").read_text(encoding="utf-8")
+        assert "Flag untested authorization changes." in text
+        assert "No secrets in code." not in text
 
     def test_unknown_target_in_list_silently_skipped(self, tmp_path, fastapi_profile):
         # run_all takes a list and looks up generators; unknown ones are skipped at the registry level.
