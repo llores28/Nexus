@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import tomllib
 from pathlib import Path
 
 from nexus.cli.installation import bundled_skill_files
@@ -64,10 +63,21 @@ def test_legacy_and_runtime_artifacts_are_not_tracked():
 
 
 def test_wheel_package_data_uses_an_explicit_runtime_allowlist():
-    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    package_data = config["tool"]["setuptools"]["package-data"]["nexus"]
+    config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    setuptools = re.search(
+        r"\[tool\.setuptools\]\s*(.*?)(?=\n\[|\Z)", config, flags=re.DOTALL
+    )
+    package_section = re.search(
+        r"\[tool\.setuptools\.package-data\]\s*(.*?)(?=\n\[|\Z)",
+        config,
+        flags=re.DOTALL,
+    )
 
-    assert config["tool"]["setuptools"]["include-package-data"] is False
+    assert setuptools and re.search(
+        r"^include-package-data\s*=\s*false$", setuptools.group(1), re.MULTILINE
+    )
+    assert package_section
+    package_data = re.findall(r'"([^"]+)"', package_section.group(1))
     assert "*.md" not in package_data
     assert "*.html" not in package_data
     assert {
