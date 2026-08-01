@@ -14,7 +14,7 @@ UTF-8 byte counts, not vendor-billed token claims. `nexus context audit`
 estimates tokens at four characters per token and counts only Agent Skill
 frontmatter as ambient discovery context; skill bodies remain just-in-time.
 
-The final dogfood audit measured:
+The final generated compatibility-fixture audit measured:
 
 - zero duplicated instruction lines across generated provider surfaces;
 - complete managed ignore coverage for Cursor, Aider, and Repomix; legacy

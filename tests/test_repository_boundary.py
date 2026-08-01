@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -20,31 +19,20 @@ def _tracked() -> set[str]:
     return set(result.stdout.splitlines())
 
 
-def test_manifest_owned_files_are_present_in_clean_clone_sources():
-    manifest = json.loads((ROOT / ".nexus" / "install-manifest.json").read_text(encoding="utf-8"))
+def test_source_checkout_does_not_track_generated_target_surfaces():
     tracked = _tracked()
 
-    assert set(manifest["files"]) <= tracked
-    assert ".cursor/rules/00-core.mdc" in tracked
-
-
-def test_managed_provider_surfaces_are_not_ignored():
-    manifest = json.loads((ROOT / ".nexus" / "install-manifest.json").read_text(encoding="utf-8"))
-    candidates = [
-        *manifest["files"],
-        ".cursor/rules/10-fastapi.mdc",
-        ".github/instructions/python.instructions.md",
-    ]
-
-    result = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--stdin", "-z"],
-        cwd=ROOT,
-        input="\0".join(candidates) + "\0",
-        capture_output=True,
-        text=True,
-        check=False,
+    forbidden = (
+        ".agents/",
+        ".claude/",
+        ".cursor/",
+        ".nexus/",
+        ".github/copilot-instructions.md",
+        ".github/instructions/",
     )
-    assert result.returncode == 1, result.stdout
+    assert "CLAUDE.md" not in tracked
+    assert ".cursorignore" not in tracked
+    assert not [path for path in tracked if path.startswith(forbidden)]
 
 
 def test_legacy_and_runtime_artifacts_are_not_tracked():
@@ -55,11 +43,7 @@ def test_legacy_and_runtime_artifacts_are_not_tracked():
 
     assert ".codeiumignore" not in tracked
     assert not [path for path in tracked if path.startswith(forbidden_prefixes)]
-    assert not [
-        path for path in tracked
-        if path.startswith(".nexus/")
-        and path not in {".nexus/profile.json", ".nexus/install-manifest.json"}
-    ]
+    assert not [path for path in tracked if path.startswith(".nexus/")]
 
 
 def test_wheel_package_data_uses_an_explicit_runtime_allowlist():

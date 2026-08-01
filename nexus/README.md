@@ -21,9 +21,9 @@ accepted only as migration inputs by `nexus init --upgrade`. New projects use
 
 The distributable skill bundle lives under `bundles/default/skills`. Each skill
 is self-contained: optional scripts, references, and assets travel with its
-`SKILL.md`. The repository's `.agents/skills` tree is a tested dogfood projection
-of that bundle, while `.claude/skills` is generated from the canonical project
-copy.
+`SKILL.md`. Tests install that bundle into temporary target repositories and
+verify the generated `.agents/skills` and `.claude/skills` projections there;
+generated target surfaces are not stored in the source checkout.
 
 ## Context-efficient workflow
 

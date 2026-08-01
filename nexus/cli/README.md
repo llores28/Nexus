@@ -64,9 +64,10 @@ available. Commands use subprocess argument lists and never `shell=True`.
 The wheel contains the Python package, the four runtime bootstrap templates,
 and the complete recursive Agent Skill bundle. Repository-only design docs,
 tests, journal output, dashboards, caches, build products, local IDE settings,
-and legacy Windsurf/Codeium inputs are not deployment payload. A repository
-test compares manifest ownership with the Git index and inspects the package-data
-allowlist so clean clones and built wheels expose the same supported contract.
+and legacy Windsurf/Codeium inputs are not deployment payload. Repository tests
+reject generated target-project surfaces in the source checkout, exercise
+manifest ownership in temporary projects, and inspect the package-data allowlist
+so clean clones and built wheels expose the same supported contract.
 
 Supply-chain results are coverage-aware: no supported npm lockfile means no
 clean PASS, and Python manifests are inventoried as a warning because the

@@ -28,14 +28,14 @@ def _profile(name: str = "demo") -> Profile:
     )
 
 
-def test_packaged_bundle_matches_repository_dogfood_copy():
-    root = Path(__file__).resolve().parents[1] / ".agents" / "skills"
-    dogfood = {
-        path.relative_to(root).as_posix(): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file()
-    }
-    assert dogfood == bundled_skill_files()
+def test_packaged_bundle_is_the_only_source_skill_tree():
+    root = Path(__file__).resolve().parents[1]
+    bundle = bundled_skill_files()
+
+    assert bundle
+    assert "nexus-onboard/SKILL.md" in bundle
+    assert not (root / ".agents" / "skills").exists()
+    assert not (root / ".claude" / "skills").exists()
 
 
 def test_skill_validation_rejects_escaping_relative_reference(tmp_path):
