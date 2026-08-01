@@ -5,7 +5,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from nexus.cli.bs_cli import cli
+from nexus.cli.bs_cli import _default_project_dir, cli
 from nexus.cli.generators import run_all
 from nexus.cli.installation import (
     ALL_CONSUMERS,
@@ -110,6 +110,28 @@ def test_fresh_init_dry_run_writes_nothing(tmp_path):
     assert result.exit_code == 0, result.output
     assert list(tmp_path.iterdir()) == []
     assert "No files were written" in result.output
+
+
+def test_project_local_installer_defaults_to_containing_project(tmp_path, monkeypatch):
+    project = tmp_path / "host-project"
+    installer = project / "nexus"
+    (installer / "cli").mkdir(parents=True)
+    (installer / "pyproject.toml").write_text(
+        '[project]\nname = "nexus-bootstrap"\n', encoding="utf-8"
+    )
+    (installer / "cli" / "bs_cli.py").write_text("# installer marker\n", encoding="utf-8")
+    monkeypatch.chdir(installer)
+
+    assert Path(_default_project_dir()) == project.resolve()
+    result = CliRunner().invoke(cli, ["init", "--template", "fast", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert (project / ".nexus" / "install-manifest.json").is_file()
+    assert (project / ".agents" / "skills" / "nexus-onboard" / "SKILL.md").is_file()
+    assert (project / "AGENTS.md").is_file()
+    assert not (installer / ".nexus").exists()
+    assert not (installer / ".agents").exists()
+    assert not (installer / ".claude").exists()
 
 
 def test_unattended_fresh_init_requires_explicit_tier(tmp_path):

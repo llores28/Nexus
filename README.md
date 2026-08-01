@@ -8,35 +8,35 @@ Drift detection (`nexus doctor`) validates the install manifest, provider discov
 
 ## Getting Started
 
-Run from the directory of the project you want to bootstrap.
+Keep this self-contained distribution at `<project-root>/nexus`. Run its setup
+script either from the project root or from inside that `nexus` directory. When
+launched inside `nexus` without an explicit project directory, the installer
+targets the containing project root. Nexus-managed tracking and agent surfaces
+are always written to that target root, never into the installer directory.
 
 > **Release status:** onboarding is pinned to the immutable `v0.3.0` GitHub
 > release. PyPI is not an installation source for this release; local and
 > offline installs can pass a verified wheel path with `-Source` / `--source`.
 
-### Recommended — run the pinned installer from your project
+### Recommended — install from the project-local `nexus` folder
 
 **Windows PowerShell:**
 ```powershell
-irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1
-Get-Content .\setup-nexus.ps1                    # inspect before execution
-Unblock-File .\setup-nexus.ps1
-.\setup-nexus.ps1 -ProjectDir . -Template team -AcceptDefaults
+Get-Content .\nexus\setup.ps1                    # inspect before execution
+Unblock-File .\nexus\setup.ps1
+.\nexus\setup.ps1 -Template team -AcceptDefaults
 ```
 
 **macOS / Linux / Git Bash:**
 ```bash
-curl -fsSLo setup-nexus.sh https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.sh
-less setup-nexus.sh                              # inspect before execution
-bash setup-nexus.sh --project-dir . --template team --yes
+less nexus/setup.sh                              # inspect before execution
+bash nexus/setup.sh --template team --yes
 ```
 
-The installer creates or reuses the target project's `.venv`, installs the
-immutable `v0.3.0` release non-editably, previews or applies Nexus, and invokes
-that venv's own executable. A local Nexus clone is supported for development,
-but requires an explicit target:
-`.\setup.ps1 -ProjectDir C:\path\to\project` or
-`./setup.sh --project-dir /path/to/project`.
+The installer creates or reuses `<project-root>/.venv`, installs Nexus
+non-editably from `<project-root>/nexus`, previews or applies the requested
+changes, and invokes that venv's own executable. `-ProjectDir` / `--project-dir`
+remains available and always overrides automatic parent selection.
 
 For an existing Nexus project, run the same command again. The installer detects
 the profile, install manifest, managed `AGENTS.md`, legacy state, or legacy
@@ -437,7 +437,7 @@ If the setup script isn't available or you want to do it by hand.
 
 ### 1. Install CLI dependencies
 ```bash
-pip install -e .
+python -m pip install ./nexus
 ```
 
 ### 2. Check prerequisites
@@ -468,11 +468,16 @@ nexus journal status        # project state dashboard
 ## Project Structure
 
 ```
-Nexus/
+project-root/
+├── .git/                              # host project's source-control metadata
+├── .gitignore                         # host project's tracked ignore policy
 ├── nexus/
-│   ├── 1Fast-Bootstrap.md          # Fast bootstrap template
-│   ├── 2Team-Bootstrap.md          # Team bootstrap template
-│   ├── 3Enterprise-Bootstrap.md    # Enterprise bootstrap template
+│   ├── README.md                     # installer and CLI documentation
+│   ├── pyproject.toml                # self-contained package metadata
+│   ├── setup.ps1 / setup.sh          # project-local installers
+│   ├── 1Fast-Bootstrap.md            # Fast bootstrap template
+│   ├── 2Team-Bootstrap.md            # Team bootstrap template
+│   ├── 3Enterprise-Bootstrap.md      # Enterprise bootstrap template
 │   ├── Bootstrap-Project-Intake.md    # Project intake questionnaire
 │   ├── PRD-Template.md                # PRD generation template
 │   ├── wizard-reference.md            # Source-only wizard reference
@@ -506,15 +511,19 @@ Nexus/
 │           ├── journal.py             # Project journal
 │           ├── journal_dashboard.py   # Static HTML dashboard generator
 │           └── supply_chain.py        # Supply chain security scanner
-├── tests/                             # Unit and clean-target installation tests
-├── .github/workflows/                 # Source repository CI only
-├── AGENTS.md                          # Hand-maintained contributor guidance
-└── .gitignore                         # Source, build, and local-runtime exclusions
+├── .nexus/                            # profile, manifest, journal, compact state
+├── .agents/skills/                    # canonical installed Agent Skills
+├── AGENTS.md                          # canonical shared project instructions
+├── CLAUDE.md / .claude/skills/        # optional Claude projection
+├── .cursor/rules/                     # optional Cursor-only deltas
+└── .github/*                          # host CI plus optional Copilot deltas
 ```
 
-Provider adapters, canonical project skills, profiles, manifests, and journal
-state are generated only in initialized target projects. Installation tests use
-temporary repositories, so those outputs do not become source files.
+The `nexus/` directory is immutable installer/package input. Provider adapters,
+canonical project skills, profiles, manifests, journal state, the project
+virtual environment, and Git hooks belong to the containing project root.
+Installation tests enforce this boundary and reject duplicate nested package
+trees such as `nexus/nexus/`.
 
 Legacy inputs may exist in a user's project during an upgrade, but Nexus does
 not ship, generate, modify, or track them:

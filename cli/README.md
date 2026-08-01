@@ -11,6 +11,12 @@ script before running it; do not pipe it into a shell. The installer creates
 `nexus` executable. Clone-based setup uses a normal non-editable install, so a
 target project never depends on the continued presence of the Nexus clone.
 
+The supported project-local layout is `<project>/nexus`. Run
+`<project>/nexus/setup.ps1` or `<project>/nexus/setup.sh`; when launched from
+inside that directory, the containing project is selected automatically.
+Generated `.nexus`, `.agents`, adapter, journal, hook, and `.venv` surfaces stay
+in the project root. An explicit `-ProjectDir` / `--project-dir` always wins.
+
 The tag-based commands use the immutable `v0.3.0` GitHub release. For local or
 offline validation, use a verified wheel through `-Source` / `--source`.
 

@@ -45,11 +45,15 @@ Repository = "https://github.com/llores28/Nexus"
 
 [tool.setuptools]
 include-package-data = false
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["nexus*"]
-exclude = ["tests*", ".nexus*", ".windsurf*", ".cache*"]
+packages = [
+    "nexus",
+    "nexus.bundles",
+    "nexus.bundles.default",
+    "nexus.cli",
+    "nexus.cli.generators",
+    "nexus.cli.tools",
+]
+package-dir = { nexus = "." }
 
 [tool.setuptools.package-data]
 nexus = [

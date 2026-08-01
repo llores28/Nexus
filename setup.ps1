@@ -2,9 +2,9 @@
 #
 # RECOMMENDED usage (avoids AMSI/Defender blocks):
 #
-#   Option A — clone the repo and install into an explicit project:
-#     git clone --branch v0.3.0 --depth 1 https://github.com/llores28/Nexus.git; cd Nexus
-#     .\setup.ps1 -ProjectDir C:\path\to\project -Template team -Unattended
+#   Option A — keep this distribution at <project>\nexus and run from the project:
+#     .\nexus\setup.ps1 -Template team -Unattended
+#     # Running .\setup.ps1 from inside <project>\nexus also targets <project>.
 #
 #   Option B — download to disk, inspect, then run:
 #     irm https://raw.githubusercontent.com/llores28/Nexus/v0.3.0/setup.ps1 -OutFile setup-nexus.ps1
@@ -26,6 +26,8 @@
 #   .\setup.ps1 -Refresh         # on upgrade, also regenerate BOOTSTRAP.md
 #
 # Behavior:
+#   - When this script is run from <project>\nexus without -ProjectDir, the
+#     containing project directory is selected automatically.
 #   - Brand-new project: creates .venv, installs Nexus, and runs `nexus init`.
 #   - Already-bootstrapped project (profile, manifest, or legacy state): creates/reuses
 #     .venv, upgrades the Nexus package, runs `nexus init --upgrade` to re-validate
@@ -88,11 +90,19 @@ $ScriptDir = Split-Path -Parent $PSCommandPath
 if (-not $ProjectDir) {
     $candidate = (Get-Location).Path
     $candidatePyproject = Join-Path $candidate "pyproject.toml"
-    if ((Test-Path $candidatePyproject) -and ((Get-Content $candidatePyproject -Raw) -match 'name = "nexus-bootstrap"')) {
-        Err "Running from the Nexus clone requires -ProjectDir <your-project>."
+    $scriptLeaf = Split-Path -Leaf $ScriptDir
+    $runningFromInstaller = ($candidate -eq $ScriptDir) -and ($scriptLeaf -ieq "nexus") -and
+        (Test-Path $candidatePyproject) -and
+        ((Get-Content $candidatePyproject -Raw) -match 'name = "nexus-bootstrap"')
+    if ($runningFromInstaller) {
+        $ProjectDir = Split-Path -Parent $ScriptDir
+        Info "Targeting containing project: $ProjectDir"
+    } elseif ((Test-Path $candidatePyproject) -and ((Get-Content $candidatePyproject -Raw) -match 'name = "nexus-bootstrap"')) {
+        Err "A standalone Nexus source checkout requires -ProjectDir <your-project>."
         exit 2
+    } else {
+        $ProjectDir = $candidate
     }
-    $ProjectDir = $candidate
 }
 if (-not (Test-Path -LiteralPath $ProjectDir -PathType Container)) {
     Err "Project directory does not exist: $ProjectDir"

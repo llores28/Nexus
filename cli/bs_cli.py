@@ -1,7 +1,7 @@
 """
 Nexus CLI Toolkit — main entry point.
 
-Usage: python nexus/cli/bs_cli.py <subcommand> [options]
+Usage from a host project: python nexus/cli/bs_cli.py <subcommand> [options]
 
 All tools emit structured JSON by default (--format json).
 Use --format human for rich terminal output.
@@ -37,7 +37,29 @@ def _ensure_utf8_stdio() -> None:
 
 _ensure_utf8_stdio()
 
-import click
+import click  # noqa: E402 - UTF-8 stdio must be configured before Click imports.
+
+
+def _is_project_local_installer(path: Path) -> bool:
+    """Return whether *path* is the self-contained ``project/nexus`` folder."""
+    if path.name.casefold() != "nexus":
+        return False
+    pyproject = path / "pyproject.toml"
+    if not pyproject.is_file() or not (path / "cli" / "bs_cli.py").is_file():
+        return False
+    try:
+        content = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return 'name = "nexus-bootstrap"' in content
+
+
+def _default_project_dir() -> str:
+    """Use the containing project when invoked from ``project/nexus``."""
+    current = Path.cwd().resolve()
+    if _is_project_local_installer(current):
+        return str(current.parent)
+    return str(current)
 
 # Ensure the nexus package is importable
 _CLI_DIR = Path(__file__).resolve().parent
@@ -45,8 +67,8 @@ _NEXUS_DIR = _CLI_DIR.parent
 if str(_NEXUS_DIR.parent) not in sys.path:
     sys.path.insert(0, str(_NEXUS_DIR.parent))
 
-from nexus import __version__
-from nexus.cli.security import audit_log
+from nexus import __version__  # noqa: E402 - direct-script path bootstrap above.
+from nexus.cli.security import audit_log  # noqa: E402 - direct-script path bootstrap above.
 
 
 class AuditGroup(click.Group):
@@ -100,7 +122,7 @@ def prereqs_cmd(ctx, output_format, component, guide):
 @click.option("--level", type=click.Choice(["quick", "full"]), default="quick", help="Test depth.")
 @click.option("--isolated-install", is_flag=True,
               help="Build and install the project wheel in a temporary virtual environment.")
-@click.option("--project-dir", default=".", help="Project directory to test.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory to test.")
 @click.pass_context
 def smoketest_cmd(ctx, output_format, level, isolated_install, project_dir):
     """Run tiered smoke tests on the project."""
@@ -115,7 +137,7 @@ def smoketest_cmd(ctx, output_format, level, isolated_install, project_dir):
 @click.argument("subcommand", type=click.Choice(["logs", "trace", "deps", "env", "ports", "secrets-scan"]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def debug_cmd(ctx, subcommand, args, output_format, project_dir):
     """Debug investigation tools."""
@@ -150,7 +172,7 @@ def scrape_cmd(ctx, subcommand, url, output_format, depth):
 @click.argument("name")
 @click.option("--description", default="", help="Tool description.")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory that will own the generated tool.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory that will own the generated tool.")
 @click.pass_context
 def scaffold_cmd(ctx, name, description, output_format, project_dir):
     """Scaffold a tracked project-local CLI tool."""
@@ -166,7 +188,7 @@ def scaffold_cmd(ctx, name, description, output_format, project_dir):
 @cli.command("local-env")
 @click.argument("subcommand", type=click.Choice(["init", "build", "up", "down", "logs", "status", "validate"]))
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def local_env_cmd(ctx, subcommand, output_format, project_dir):
     """Local environment and container validation tools."""
@@ -177,7 +199,7 @@ def local_env_cmd(ctx, subcommand, output_format, project_dir):
 @cli.command("health")
 @click.argument("subcommand", type=click.Choice(["check", "components", "security", "usage", "report"]))
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def health_cmd(ctx, subcommand, output_format, project_dir):
     """Nexus health check — validate components work cohesively."""
@@ -198,7 +220,7 @@ def health_cmd(ctx, subcommand, output_format, project_dir):
 @click.option("--dry-run", is_flag=True, help="Preview all planned writes and migrations without changing files.")
 @click.option("--consumers", default="all",
               help="Comma-separated consumers: all,codex,devin,claude,cursor,copilot,devin-review.")
-@click.option("--project-dir", default=".", help="Project to initialize.")
+@click.option("--project-dir", default=_default_project_dir, help="Project to initialize.")
 @click.pass_context
 def init_cmd(ctx, output_format, upgrade, refresh, template, accept_defaults, dry_run, consumers, project_dir):
     """Bootstrap (or upgrade) the current project with Nexus."""
@@ -216,7 +238,7 @@ def init_cmd(ctx, output_format, upgrade, refresh, template, accept_defaults, dr
 ]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.option("--no-export", "no_export", is_flag=True, default=False,
               help="Skip auto-dashboard export after 'log' (useful in tight CI loops).")
 @click.option("--force", "force", is_flag=True, default=False,
@@ -233,7 +255,7 @@ def journal_cmd(ctx, subcommand, args, output_format, project_dir, no_export, fo
 @click.argument("subcommand", type=click.Choice(["scan", "ioc", "audit", "advisories"]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory to scan.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory to scan.")
 @click.pass_context
 def supply_chain_cmd(ctx, subcommand, args, output_format, project_dir):
     """Supply chain security scanner — detect compromised packages and IOCs."""
@@ -245,7 +267,7 @@ def supply_chain_cmd(ctx, subcommand, args, output_format, project_dir):
 @click.argument("subcommand", type=click.Choice(["detect", "show", "set"]))
 @click.argument("args", nargs=-1)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def profile_cmd(ctx, subcommand, args, output_format, project_dir):
     """Manage the project profile (.nexus/profile.json) -- the source of truth for cross-IDE generation."""
@@ -259,7 +281,7 @@ def profile_cmd(ctx, subcommand, args, output_format, project_dir):
 @click.option("--dry-run", is_flag=True, help="Show what would be written without writing.")
 @click.option("--force", is_flag=True, help="Overwrite managed blocks even when no profile change is detected.")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def generate_cmd(ctx, targets, dry_run, force, output_format, project_dir):
     """Generate IDE-specific files (AGENTS.md, CLAUDE.md, .cursor/rules/, copilot-instructions) from the profile."""
@@ -273,7 +295,7 @@ def generate_cmd(ctx, targets, dry_run, force, output_format, project_dir):
 @click.option("--consumer", default="all",
               help="Consumer to verify: all,codex,devin,claude,cursor,copilot,devin-review,vscode.")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="human")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 @click.pass_context
 def doctor_cmd(ctx, deep, consumer, output_format, project_dir):
     """Check rule drift, version mismatch, missing IDE files, and journal health."""
@@ -292,7 +314,7 @@ def context_group():
 
 @context_group.command("audit")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 def context_audit_cmd(output_format, project_dir):
     """Report effective context, duplication, ignores, and readiness."""
     from nexus.cli.tools.context import audit_context, audit_status, emit_context_result
@@ -308,7 +330,7 @@ def context_audit_cmd(output_format, project_dir):
 @click.option("--engine", type=click.Choice(["inventory", "repomix"]), default="inventory")
 @click.option("--budget-tokens", type=click.IntRange(min=64), default=2000)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 def context_map_cmd(query, engine, budget_tokens, output_format, project_dir):
     """Build a bounded repository skeleton, optionally filtered by QUERY."""
     from nexus.cli.tools.context import build_map, emit_context_result
@@ -321,7 +343,7 @@ def context_map_cmd(query, engine, budget_tokens, output_format, project_dir):
 @click.option("--exit-code", type=int, default=0)
 @click.option("--max-chars", type=click.IntRange(min=64), default=1200)
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 def context_mask_cmd(input_value, kind, exit_code, max_chars, output_format, project_dir):
     """Compress test, lint, build, or terminal output deterministically."""
     from nexus.cli.tools.context import emit_context_result, mask_observation, read_mask_input
@@ -337,7 +359,7 @@ def context_mask_cmd(input_value, kind, exit_code, max_chars, output_format, pro
 @click.option("--apply", "apply_changes", is_flag=True, help="Write idempotent managed blocks.")
 @click.option("--tool", type=click.Choice(["all", "codeium", "cursor", "aider", "repomix"]), default="all")
 @click.option("--format", "output_format", type=click.Choice(["json", "human", "yaml"]), default="json")
-@click.option("--project-dir", default=".", help="Project directory.")
+@click.option("--project-dir", default=_default_project_dir, help="Project directory.")
 def context_ignores_cmd(check_only, apply_changes, tool, output_format, project_dir):
     """Check or apply AI-tool context ignore rules."""
     from nexus.cli.tools.context import emit_context_result, manage_ignores

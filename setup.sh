@@ -2,6 +2,8 @@
 # Nexus one-command setup / upgrade.
 #
 # Usage:
+#   ./nexus/setup.sh --template team --yes   # from the containing project
+#   ./setup.sh --template team --yes         # from inside <project>/nexus
 #   ./setup.sh --project-dir /path/to/project
 #   ./setup.sh --project-dir /path/to/project --source /path/to/nexus.whl
 #   ./setup.sh --project-dir /path/to/project --template team --unattended
@@ -9,6 +11,8 @@
 #   ./setup.sh --refresh        # on upgrade, also regenerate BOOTSTRAP.md
 #
 # Behavior:
+#   - When this script is run from <project>/nexus without --project-dir, the
+#     containing project directory is selected automatically.
 #   - Brand-new project: creates .venv, installs Nexus, and runs `nexus init`.
 #   - Already-bootstrapped project (profile, manifest, or legacy state): creates/reuses
 #     .venv, upgrades the Nexus package, runs `nexus init --upgrade` to re-validate
@@ -86,8 +90,12 @@ err()  { printf "\n\033[1;31mXX  %s\033[0m\n" "$*" >&2; }
 
 if [ -z "$PROJECT_DIR" ]; then
   PROJECT_DIR="$(pwd)"
-  if [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml"; then
-    err "Running from the Nexus clone requires --project-dir <your-project>."
+  INSTALLER_NAME="$(basename "$SCRIPT_DIR")"
+  if [ "$PROJECT_DIR" = "$SCRIPT_DIR" ] && [ "$(printf '%s' "$INSTALLER_NAME" | tr '[:upper:]' '[:lower:]')" = "nexus" ] && [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml"; then
+    PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+    info "Targeting containing project: $PROJECT_DIR"
+  elif [ -f "$PROJECT_DIR/pyproject.toml" ] && grep -q 'name = "nexus-bootstrap"' "$PROJECT_DIR/pyproject.toml"; then
+    err "A standalone Nexus source checkout requires --project-dir <your-project>."
     exit 2
   fi
 fi

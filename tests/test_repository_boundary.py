@@ -60,6 +60,12 @@ def test_wheel_package_data_uses_an_explicit_runtime_allowlist():
     assert setuptools and re.search(
         r"^include-package-data\s*=\s*false$", setuptools.group(1), re.MULTILINE
     )
+    assert re.search(
+        r'^package-dir\s*=\s*\{\s*nexus\s*=\s*"\."\s*\}$',
+        setuptools.group(1),
+        re.MULTILINE,
+    )
+    assert "[tool.setuptools.packages.find]" not in config
     assert package_section
     package_data = re.findall(r'"([^"]+)"', package_section.group(1))
     assert "*.md" not in package_data
@@ -99,3 +105,12 @@ def test_setup_scripts_recognize_legacy_upgrades_without_editable_installs():
 
     assert "Push-Location -LiteralPath $ProjectDir" in powershell
     assert 'cd "$PROJECT_DIR"' in shell
+    assert 'Targeting containing project: $ProjectDir' in powershell
+    assert 'Targeting containing project: $PROJECT_DIR' in shell
+
+
+def test_flat_installer_has_no_duplicate_python_package_tree():
+    assert (ROOT / "__init__.py").is_file()
+    assert (ROOT / "cli" / "bs_cli.py").is_file()
+    assert (ROOT / "bundles" / "default" / "skills").is_dir()
+    assert not (ROOT / "nexus").exists()

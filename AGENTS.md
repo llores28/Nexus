@@ -5,9 +5,9 @@ project instructions, Agent Skills, workflows, and compact cross-agent state.
 
 ## Repository map
 
-- `nexus/cli/` — Click/Rich CLI and provider-neutral generators
-- `nexus/` — Fast, Team, Enterprise, and universal bootstrap templates
-- `nexus/bundles/default/skills/` — distributable Agent Skills source
+- `cli/` — Click/Rich CLI and provider-neutral generators
+- repository root — Fast, Team, Enterprise, and universal bootstrap templates
+- `bundles/default/skills/` — distributable Agent Skills source
 - `tests/` — pytest suite
 - Target-project `.windsurf/*` — accepted only as read-only legacy migration input
 
@@ -26,12 +26,12 @@ project instructions, Agent Skills, workflows, and compact cross-agent state.
 ## Verified commands
 
 ```bash
-python nexus/cli/bs_cli.py context audit
-python nexus/cli/bs_cli.py context map <query>
-python nexus/cli/bs_cli.py context mask --input <path|-> --kind test
-python nexus/cli/bs_cli.py smoketest --level quick
-python nexus/cli/bs_cli.py debug secrets-scan
-python nexus/cli/bs_cli.py journal handoff
+python cli/bs_cli.py context audit
+python cli/bs_cli.py context map <query>
+python cli/bs_cli.py context mask --input <path|-> --kind test
+python cli/bs_cli.py smoketest --level quick
+python cli/bs_cli.py debug secrets-scan
+python cli/bs_cli.py journal handoff
 python -m pytest tests/
 ```
 
